@@ -1,0 +1,24 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+android/local.properties
+android/.gradle/
+android/.kotlin/
+android/build/
+android/app/build/
+android/capacitor-cordova-android-plugins/build/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+*.jks
+*.keystore
+keystore.properties
+
+# Kunci rahasia lisensi Admin tidak boleh masuk repo
+*private-key*.json
+license-private-key*
+
+# Rilis: keystore & hasil build rilis tidak masuk repo
+*.jks
+dist-release/

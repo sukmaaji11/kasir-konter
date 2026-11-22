@@ -1,0 +1,36 @@
+{
+  "name": "kasir-konter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && vite build",
+    "cap:sync": "cap sync android",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "overrides": {
+    "esbuild": "0.28.2",
+    "postcss": "8.5.31",
+    "rollup": "4.64.10",
+    "tslib": "2.8.1"
+  },
+  "dependencies": {
+    "@capacitor-community/sqlite": "8.1.1",
+    "@capacitor/core": "8.5.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/cli": "8.5.3",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/sql.js": "1.4.11",
+    "sql.js": "1.15.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  }
+}
