@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Latar jendela di belakang WebView: navy agar peralihan dari splash mulus. -->
+    <color name="app_window_background">#1F3A5F</color>
+    <color name="app_status_bar">#1F3A5F</color>
+    <color name="app_navigation_bar">#FFFFFF</color>
+</resources>

@@ -4,11 +4,71 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1f3a5f" />
-    <style>html, body { background: #1f3a5f; }</style>
     <title>Kasir Konter</title>
+    <!--
+      Splash awal langsung di HTML: tampil begitu WebView membaca halaman,
+      sebelum JavaScript aplikasi selesai dimuat. Tampilannya sama persis dengan
+      SplashScreen di src/ui/AccessScreens.tsx (React lalu menggantinya tanpa
+      animasi ulang). Warna ditulis langsung karena styles.css belum dimuat.
+    -->
+    <style>
+      html, body { margin: 0; background: #1f3a5f; }
+      .boot-splash {
+        position: fixed; inset: 0; z-index: 100;
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 8px; padding: 24px; color: #fff; text-align: center;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #1f3a5f;
+      }
+      /* Gradasi muncul perlahan di atas navy polos splash sistem. */
+      .boot-splash::before {
+        content: ""; position: absolute; inset: 0;
+        background: radial-gradient(circle at 50% 45%, #2c5487 0%, #1f3a5f 55%, #152a46 100%);
+        animation: boot-fade 700ms ease-out both;
+      }
+      .boot-splash::before { z-index: 0; }
+      .boot-splash .logo, .boot-splash .below, .boot-splash .powered { z-index: 1; }
+      @keyframes boot-fade { from { opacity: 0; } }
+      /* Logo tepat di tengah layar, sama dengan ikon splash sistem Android (tanpa animasi supaya menyambung). */
+      .boot-splash .logo { position: absolute; top: 50%; left: 50%; width: 112px; height: 112px; margin: -43px 0 0 -56px; }
+      .boot-splash .below { position: absolute; top: calc(50% + 91px); left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+      .boot-splash .logo svg { display: block; border-radius: 30px; box-shadow: 0 18px 40px rgba(0,0,0,0.3), 0 0 0 2px rgba(255,255,255,0.2); }
+      .boot-splash .name { font-size: 28px; font-weight: 800; letter-spacing: -0.03em; animation: boot-up 500ms 120ms ease-out both; }
+      .boot-splash .tagline { color: rgba(255,255,255,0.75); font-size: 14px; animation: boot-up 500ms 200ms ease-out both; }
+      .boot-splash .dots { display: flex; gap: 8px; margin-top: 26px; }
+      .boot-splash .dots span { width: 9px; height: 9px; border-radius: 999px; background: #f2b544; animation: boot-blink 1s ease-in-out infinite; }
+      .boot-splash .dots span:nth-child(2) { animation-delay: 160ms; }
+      .boot-splash .dots span:nth-child(3) { animation-delay: 320ms; }
+      .boot-splash .powered {
+        position: absolute; left: 0; right: 0; bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+        margin: 0; color: rgba(255,255,255,0.6); font-size: 12px; letter-spacing: 0.04em;
+        animation: boot-up 500ms 300ms ease-out both;
+      }
+      .boot-splash .powered strong { color: #f2b544; font-weight: 800; }
+      @keyframes boot-up { from { transform: translateY(8px); opacity: 0; } }
+      @keyframes boot-blink { 0%, 100% { opacity: 0.3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-4px); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot-splash" role="status" aria-live="polite">
+        <div class="logo">
+          <svg width="112" height="112" viewBox="0 0 64 64" role="img" aria-label="Kasir Konter">
+            <rect width="64" height="64" rx="16" fill="#1f3a5f" />
+            <rect x="20" y="10" width="24" height="44" rx="5" fill="#f4f7fb" />
+            <rect x="23.5" y="15" width="17" height="30" rx="2" fill="#1f3a5f" />
+            <circle cx="32" cy="49.5" r="2" fill="#1f3a5f" />
+            <path d="M26.5 30.5l4 4 7.5-8" fill="none" stroke="#f2b544" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <div class="below">
+          <div class="name">Kasir Konter</div>
+          <div class="tagline">Kasir &amp; catatan konter HP</div>
+          <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+        </div>
+        <p class="powered">Powered by <strong>Jadicuan</strong></p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -78,7 +78,8 @@ export function App() {
   }, []);
 
   if (error !== null) return <SplashScreen message={error} />;
-  if (runtime === null) return <SplashScreen />;
+  // Splash HTML di index.html sudah beranimasi; lanjutkan tanpa animasi ulang.
+  if (runtime === null) return <SplashScreen animate={false} />;
 
   return (
     <AccessGate auth={runtime.auth} license={runtime.license}>

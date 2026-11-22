@@ -99,6 +99,16 @@ Set-Location android
 APK uji: `android/app/build/outputs/apk/debug/app-debug.apk`, dengan ID
 `id.co.jadicuan.kasirkonter.dev`, terpisah dari versi rilis.
 
+## Ikon & splash
+
+- Ikon launcher dan ikon splash dibuat oleh `tools/icons/launcher_icon.py`
+  (navy + logo ponsel bercentang, sama dengan `src/ui/BrandLogo.tsx`):
+  `python tools/icons/launcher_icon.py export android/app/src/main/res`.
+- Splash sistem Android (navy + logo) ditahan `MainActivity` sampai halaman web
+  selesai dimuat (maks. 8 detik), lalu ditutup tanpa animasi. `index.html`
+  berisi splash HTML dengan logo di posisi yang sama, jadi tidak ada layar
+  kosong/kilatan saat WebView menyala.
+
 ## Status
 
 - Tahap 1: domain, database, laporan untung.
@@ -115,5 +125,4 @@ APK uji: `android/app/build/outputs/apk/debug/app-debug.apk`, dengan ID
 
 Berikutnya:
 1. Cadangan/pindah HP (ekspor/impor file) dan pengingat backup.
-2. Ikon aplikasi dan splash Android sendiri (sekarang masih bawaan Capacitor).
-3. Halaman Admin di browser untuk membuat kode aktivasi.
+2. Halaman Admin di browser untuk membuat kode aktivasi.

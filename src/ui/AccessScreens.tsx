@@ -22,14 +22,16 @@ export function SplashScreen({
       <div className="splash-logo">
         <BrandLogo size={112} />
       </div>
-      <div className="splash-name">{APP_NAME}</div>
-      <div className="splash-tagline">Kasir &amp; catatan konter HP</div>
-      <div className="splash-dots" aria-hidden="true">
-        <span />
-        <span />
-        <span />
+      <div className="splash-below">
+        <div className="splash-name">{APP_NAME}</div>
+        <div className="splash-tagline">Kasir &amp; catatan konter HP</div>
+        <div className="splash-dots" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        {message !== undefined && <p className="splash-message">{message}</p>}
       </div>
-      {message !== undefined && <p className="splash-message">{message}</p>}
       <p className="splash-powered">
         Powered by <strong>{BRAND_NAME}</strong>
       </p>
