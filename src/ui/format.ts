@@ -33,6 +33,11 @@ export function dateTimeWib(ms: number): string {
   }).format(ms);
 }
 
+/** Jam saja, mis. "14.05". */
+export function timeWib(ms: number): string {
+  return new Intl.DateTimeFormat("id-ID", { timeZone: WIB, hour: "2-digit", minute: "2-digit" }).format(ms);
+}
+
 export function dateWib(ms: number): string {
   return new Intl.DateTimeFormat("id-ID", {
     timeZone: WIB,

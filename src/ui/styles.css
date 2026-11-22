@@ -2311,7 +2311,104 @@ button.list-card:not(:disabled):active {
   font-weight: 700;
 }
 
+.range-step {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.range-step-button {
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--navy);
+  background: #fff;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.range-step-button:disabled {
+  color: #c3cad4;
+  background: #f6f8fa;
+}
+
 .range-summary {
+  display: grid;
+  gap: 1px;
+  text-align: center;
+}
+
+.range-summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.range-summary strong {
+  color: var(--ink, #1d2733);
+  font-size: 14px;
+}
+
+.history-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.history-summary.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.history-summary > div {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.history-summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.history-summary strong {
+  font-size: 15px;
+}
+
+.history-summary .positive {
+  color: #1d7a46;
+}
+
+.history-summary .negative {
+  color: #c0392b;
+}
+
+.history-filters {
+  display: grid;
+  gap: 6px;
+}
+
+.history-day {
+  display: grid;
+  gap: 6px;
+}
+
+.history-day-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 4px 2px 0;
+  font-size: 13px;
+}
+
+.history-day-head span {
   color: var(--muted);
   font-size: 12px;
 }
