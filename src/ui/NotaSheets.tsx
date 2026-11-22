@@ -5,7 +5,8 @@ import { can } from "../domain/auth";
 import { PAYMENT_LABELS, type CashDetail } from "../printing/receipt";
 import { ErrorText, Sheet } from "./common";
 import type { PageContext } from "./context";
-import { dateTimeWib, rp, rpSigned } from "./format";
+import { warrantyLabel } from "../domain/service";
+import { dateTimeWib, dayLabel, rp, rpSigned } from "./format";
 import { saleReceiptText, serviceReceiptText } from "./receipts";
 import { openWhatsApp, shareText } from "./whatsapp";
 
@@ -285,6 +286,13 @@ export function ServiceReceiptSheet({
           <span>{balance >= 0n ? "Dibayar sekarang" : "DP dikembalikan"}</span>
           <strong>{rp(balance >= 0n ? balance : -balance)}</strong>
         </div>
+        {order.warrantyUntil !== null && (
+          <div className="receipt-warranty">
+            <strong>Garansi {warrantyLabel(order.warrantyDays)}</strong>
+            <span>Berlaku s/d {dayLabel(order.warrantyUntil)}</span>
+            {order.warrantyNote !== null && <small>{order.warrantyNote}</small>}
+          </div>
+        )}
         {ctx.store.footer.trim() && <p className="receipt-footer">{ctx.store.footer}</p>}
       </div>
       <ErrorText error={error} />

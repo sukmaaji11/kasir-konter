@@ -10,7 +10,8 @@ export type DomainErrorCode =
   | "invalid_period"
   | "invalid_name"
   | "invalid_pin"
-  | "weak_pin";
+  | "weak_pin"
+  | "invalid_warranty";
 
 export class DomainError extends Error {
   constructor(

@@ -39,11 +39,13 @@ import {
 } from "../domain/sales";
 import {
   assertServiceTransition,
+  assertWarrantyDays,
   serviceBalanceDue,
   serviceProfit,
   validateServiceCharges,
   type ServiceCharges,
   type ServiceStatus,
+  type ServiceWarrantyInput,
 } from "../domain/service";
 import { normalizePhoneNumber, optionalText, requiredText } from "../domain/text";
 import {
@@ -53,11 +55,12 @@ import {
   jakartaDayKey,
   jakartaDayRange,
   jakartaMonthRange,
+  shiftDayKey,
   type TimeRange,
 } from "../domain/time";
-import type { SqlDatabaseDriver, SqlRow } from "./driver";
-import { inTransaction, migrateDatabase } from "./migrations";
-import type { StoredValue } from "./schema";
+import { readSqlRow, type SqlDatabaseDriver, type SqlRow } from "./driver";
+import { DATABASE_MIGRATIONS, inTransaction, migrateDatabase, readSchemaVersion } from "./migrations";
+import { SCHEMA_VERSION, type StoredRow, type StoredValue } from "./schema";
 
 // ---------------------------------------------------------------------------
 // Tipe data yang dikembalikan repository
@@ -225,6 +228,11 @@ export interface ServiceOrder {
   readonly profitRupiah: Rupiah | null;
   /** Sisa bayar saat diambil (biaya − DP), jika biaya sudah ditentukan. */
   readonly balanceDueRupiah: Rupiah | null;
+  /** Masa garansi (hari) sejak HP diambil. 0 = tanpa garansi. */
+  readonly warrantyDays: number;
+  readonly warrantyNote: string | null;
+  /** Tanggal terakhir garansi berlaku (YYYY-MM-DD), setelah HP diambil. */
+  readonly warrantyUntil: string | null;
 }
 
 export interface PhoneProfitRow {
@@ -305,6 +313,12 @@ export const MAX_PHOTOS: Readonly<Record<PhotoOwner["type"], number>> = {
 
 function isJpegDataUrl(value: string): boolean {
   return value.startsWith("data:image/jpeg;base64,") && value.length < 400_000;
+}
+
+/** Isi database mentah untuk cadangan: nama tabel -> baris. */
+export interface DataSnapshot {
+  readonly schemaVersion: number;
+  readonly tables: Readonly<Record<string, readonly StoredRow[]>>;
 }
 
 export interface RepositoryOptions {
@@ -905,8 +919,9 @@ export class KonterRepository {
     serviceId: string,
     charges: ServiceCharges,
     partsNote?: string | null,
+    warranty: ServiceWarrantyInput = { days: 0 },
   ): Promise<ServiceOrder> {
-    return this.closeServiceWork(serviceId, "selesai", charges, partsNote);
+    return this.closeServiceWork(serviceId, "selesai", charges, partsNote, warranty);
   }
 
   /** Tidak jadi diperbaiki. Biaya = biaya cek (boleh 0); modal sparepart yang terlanjur dibeli tetap dicatat. */
@@ -915,7 +930,7 @@ export class KonterRepository {
     charges: ServiceCharges,
     partsNote?: string | null,
   ): Promise<ServiceOrder> {
-    return this.closeServiceWork(serviceId, "batal", charges, partsNote);
+    return this.closeServiceWork(serviceId, "batal", charges, partsNote, { days: 0 });
   }
 
   async reopenService(serviceId: string): Promise<ServiceOrder> {
@@ -935,8 +950,11 @@ export class KonterRepository {
   async pickUpService(
     serviceId: string,
     paymentMethod: PaymentMethod = "tunai",
+    /** Garansi final saat diserahkan; kosong = pakai yang dicatat saat selesai. */
+    warranty?: ServiceWarrantyInput,
   ): Promise<ServiceOrder> {
     const method = assertPaymentMethod(paymentMethod);
+    const checked = warranty === undefined ? null : validWarranty(warranty);
     await inTransaction(this.database, async () => {
       const order = await this.requireService(serviceId);
       assertServiceTransition(order.status, "diambil");
@@ -945,8 +963,39 @@ export class KonterRepository {
          WHERE id = ?`,
         [this.now(), method, serviceId],
       );
+      // HP yang batal diperbaiki tidak bergaransi.
+      if (checked !== null && order.status === "selesai") {
+        await this.database.run(
+          `UPDATE service_orders SET warranty_days = ?, warranty_note = ? WHERE id = ?`,
+          [checked.days, checked.note, serviceId],
+        );
+      }
     });
     return this.requireService(serviceId);
+  }
+
+  /** Service yang garansinya masih berlaku pada `todayKey`, garansi paling lama habis dulu. */
+  async listActiveWarranties(todayKey: string): Promise<readonly ServiceOrder[]> {
+    const rows = await this.database.query(
+      `SELECT * FROM service_orders
+       WHERE status = 'diambil' AND warranty_days > 0 AND picked_up_at_ms IS NOT NULL
+       ORDER BY picked_up_at_ms DESC`,
+    );
+    return rows
+      .map(readService)
+      .filter((order) => order.warrantyUntil !== null && order.warrantyUntil >= todayKey)
+      .sort((left, right) => (left.warrantyUntil! < right.warrantyUntil! ? -1 : 1));
+  }
+
+  /** Riwayat service untuk satu IMEI, terbaru dulu. */
+  async findServicesByImei(imei: string): Promise<readonly ServiceOrder[]> {
+    const cleaned = imei.replace(/[\s-]/g, "");
+    if (cleaned.length === 0) return [];
+    const rows = await this.database.query(
+      `SELECT * FROM service_orders WHERE imei = ? ORDER BY received_at_ms DESC`,
+      [cleaned],
+    );
+    return rows.map(readService);
   }
 
   async getService(serviceId: string): Promise<ServiceOrder | null> {
@@ -1264,6 +1313,104 @@ export class KonterRepository {
     return rows[0] === undefined ? null : readText(rows[0], "value");
   }
 
+  // ----- Cadangan (pindah HP) --------------------------------------------
+
+  /** Semua tabel data apa adanya, untuk file cadangan. */
+  async readAllTables(): Promise<DataSnapshot> {
+    const tables: Record<string, StoredRow[]> = {};
+    for (const name of await this.tableNames()) {
+      const rows = await this.database.query(`SELECT * FROM "${name}"`);
+      tables[name] = rows.map((row) => readSqlRow(row));
+    }
+    return { schemaVersion: await readSchemaVersion(this.database), tables };
+  }
+
+  /**
+   * Ganti seluruh data dengan isi cadangan, lalu naikkan ke skema terbaru.
+   * Semuanya satu transaksi: bila ada yang tidak cocok, data lama tetap utuh.
+   * Pengaturan yang `keepSetting` kembalikan true (lisensi & printer perangkat
+   * ini) tidak ikut tertimpa.
+   */
+  async replaceAllTables(snapshot: DataSnapshot, keepSetting: (key: string) => boolean): Promise<void> {
+    const version = snapshot.schemaVersion;
+    if (!Number.isSafeInteger(version) || version < 1 || version > SCHEMA_VERSION) {
+      throw new Error(`Cadangan memakai skema ${version}; aplikasi ini mendukung sampai ${SCHEMA_VERSION}. Perbarui aplikasi dulu.`);
+    }
+    const kept = (await this.database.query("SELECT key, value FROM settings")).filter((row) =>
+      keepSetting(readText(row, "key")),
+    );
+    // Urutan tabel bebas selama memulihkan; kecocokan dicek di akhir.
+    await this.database.execute("PRAGMA foreign_keys = OFF");
+    try {
+      await inTransaction(this.database, async () => {
+        for (const name of await this.tableNames()) {
+          await this.database.execute(`DROP TABLE "${name}"`);
+        }
+        for (const migration of DATABASE_MIGRATIONS.filter((item) => item.version <= version)) {
+          for (const statement of migration.statements) await this.database.execute(statement);
+        }
+        const expected = await this.tableNames();
+        const given = Object.keys(snapshot.tables).sort();
+        if (given.join(",") !== expected.join(",")) {
+          throw new Error("Daftar tabel pada cadangan tidak cocok. Data tidak diubah.");
+        }
+        for (const name of expected) {
+          const columns = (await this.database.query(`PRAGMA table_info("${name}")`))
+            .map((row) => readText(row, "name"))
+            .sort();
+          await this.insertRows(name, columns, snapshot.tables[name] ?? []);
+        }
+        for (const migration of DATABASE_MIGRATIONS.filter((item) => item.version > version)) {
+          for (const statement of migration.statements) await this.database.execute(statement);
+        }
+        for (const row of kept) {
+          await this.database.run(
+            `INSERT INTO settings (key, value) VALUES (?, ?)
+             ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+            [readText(row, "key"), readText(row, "value")],
+          );
+        }
+        const broken = await this.database.query("PRAGMA foreign_key_check");
+        if (broken.length > 0) {
+          throw new Error("Isi cadangan rusak (ada data yang tidak saling cocok). Data tidak diubah.");
+        }
+        await this.database.execute(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+      });
+    } finally {
+      await this.database.execute("PRAGMA foreign_keys = ON");
+    }
+  }
+
+  private async tableNames(): Promise<readonly string[]> {
+    const rows = await this.database.query(
+      `SELECT name FROM sqlite_master WHERE type = 'table'
+       AND name NOT LIKE 'sqlite_%' AND name <> 'sync_table' ORDER BY name`,
+    );
+    return rows.map((row) => readText(row, "name"));
+  }
+
+  /** INSERT beberapa baris sekaligus (batas 999 parameter SQLite lama di Android). */
+  private async insertRows(table: string, columns: readonly string[], rows: readonly StoredRow[]): Promise<void> {
+    const columnList = columns.map((column) => `"${column}"`).join(", ");
+    const placeholders = `(${columns.map(() => "?").join(", ")})`;
+    const perStatement = Math.max(1, Math.floor(900 / Math.max(1, columns.length)));
+    for (let start = 0; start < rows.length; start += perStatement) {
+      const chunk = rows.slice(start, start + perStatement);
+      const values: StoredValue[] = [];
+      for (const row of chunk) {
+        const keys = Object.keys(row).sort();
+        if (keys.join(",") !== columns.join(",")) {
+          throw new Error(`Kolom tabel ${table} pada cadangan tidak cocok. Data tidak diubah.`);
+        }
+        for (const column of columns) values.push(row[column] ?? null);
+      }
+      await this.database.run(
+        `INSERT INTO "${table}" (${columnList}) VALUES ${chunk.map(() => placeholders).join(", ")}`,
+        values,
+      );
+    }
+  }
+
   async setSetting(key: string, value: string): Promise<void> {
     await this.database.run(
       `INSERT INTO settings (key, value) VALUES (?, ?)
@@ -1371,16 +1518,18 @@ export class KonterRepository {
     target: "selesai" | "batal",
     charges: ServiceCharges,
     partsNote: string | null | undefined,
+    warranty: ServiceWarrantyInput,
   ): Promise<ServiceOrder> {
     const valid = validateServiceCharges(charges);
     const note = optionalText(partsNote, "Catatan sparepart", 300);
+    const checked = target === "batal" ? { days: 0, note: null } : validWarranty(warranty);
     await inTransaction(this.database, async () => {
       const order = await this.requireService(serviceId);
       assertServiceTransition(order.status, target);
       await this.database.run(
         `UPDATE service_orders
          SET status = ?, outcome = ?, total_charge_rupiah = ?, parts_cost_rupiah = ?,
-             parts_note = ?, finished_at_ms = ?
+             parts_note = ?, finished_at_ms = ?, warranty_days = ?, warranty_note = ?
          WHERE id = ?`,
         [
           target,
@@ -1389,6 +1538,8 @@ export class KonterRepository {
           toDb(valid.partsCostRupiah),
           note,
           this.now(),
+          checked.days,
+          checked.note,
           serviceId,
         ],
       );
@@ -1580,6 +1731,8 @@ function readService(row: SqlRow): ServiceOrder {
   const totalCharge = readOptionalBigint(row, "total_charge_rupiah");
   const partsCost = readBigint(row, "parts_cost_rupiah");
   const deposit = readBigint(row, "deposit_rupiah");
+  const warrantyDays = readNumber(row, "warranty_days");
+  const pickedUpAtMs = readOptionalNumber(row, "picked_up_at_ms");
   return {
     id: readText(row, "id"),
     number: readText(row, "number"),
@@ -1598,7 +1751,7 @@ function readService(row: SqlRow): ServiceOrder {
     partsCostRupiah: partsCost,
     partsNote: readOptionalText(row, "parts_note"),
     finishedAtMs: readOptionalNumber(row, "finished_at_ms"),
-    pickedUpAtMs: readOptionalNumber(row, "picked_up_at_ms"),
+    pickedUpAtMs,
     paymentMethod:
       readOptionalText(row, "payment_method") === null
         ? null
@@ -1608,5 +1761,17 @@ function readService(row: SqlRow): ServiceOrder {
         ? null
         : serviceProfit({ totalChargeRupiah: totalCharge, partsCostRupiah: partsCost }),
     balanceDueRupiah: totalCharge === null ? null : serviceBalanceDue(totalCharge, deposit),
+    warrantyDays,
+    warrantyNote: readOptionalText(row, "warranty_note"),
+    warrantyUntil:
+      warrantyDays > 0 && pickedUpAtMs !== null
+        ? shiftDayKey(jakartaDayKey(pickedUpAtMs), warrantyDays)
+        : null,
   };
+}
+
+function validWarranty(warranty: ServiceWarrantyInput): { readonly days: number; readonly note: string | null } {
+  const days = assertWarrantyDays(warranty.days);
+  // Ketentuan tanpa masa garansi tidak ada artinya.
+  return { days, note: days === 0 ? null : optionalText(warranty.note, "Ketentuan garansi", 200) };
 }

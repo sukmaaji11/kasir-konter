@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "kasir_konter";
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export type StoredValue = string | number | null;
 export type StoredRow = Record<string, StoredValue>;
@@ -216,4 +216,14 @@ export const SCHEMA_VERSION_4_STATEMENTS: readonly string[] = [
   `CREATE INDEX sale_lines_phone ON sale_lines (phone_unit_id)`,
   `ALTER TABLE service_orders ADD COLUMN payment_method TEXT
     CHECK (payment_method IS NULL OR payment_method IN ('tunai', 'transfer', 'qris'))`,
+];
+
+/**
+ * Skema versi 5: garansi per service. Masa garansi (hari) dihitung dari
+ * tanggal HP diambil; ketentuannya dicatat per service, bukan di bawah nota.
+ */
+export const SCHEMA_VERSION_5_STATEMENTS: readonly string[] = [
+  `ALTER TABLE service_orders ADD COLUMN warranty_days INTEGER NOT NULL DEFAULT 0
+    CHECK (warranty_days BETWEEN 0 AND 365)`,
+  `ALTER TABLE service_orders ADD COLUMN warranty_note TEXT`,
 ];

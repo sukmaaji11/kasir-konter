@@ -3343,3 +3343,141 @@ button.list-card:not(:disabled):active {
 .data-table tr.clickable:active {
   background: #f3f6fa;
 }
+
+/* ---------- Garansi service ---------- */
+
+.warranty-fields {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--navy-soft);
+}
+
+.warranty-fields .block-label input {
+  background: #fff;
+}
+
+.warranty-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--navy-soft);
+}
+
+.warranty-summary > span {
+  display: grid;
+  gap: 1px;
+}
+
+.warranty-summary small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.warranty-notice {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #f6f8fa;
+  font-size: 13px;
+}
+
+.warranty-notice.active {
+  border-color: #e7b54a;
+  background: #fff6e0;
+}
+
+.muted.block,
+small.block {
+  display: block;
+}
+
+/* ---------- Cadangan & pindah HP ---------- */
+
+.backup-status {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid #b9dcc6;
+  border-radius: 12px;
+  background: #eaf6ee;
+  font-size: 13px;
+}
+
+.backup-status strong {
+  color: #1d7a46;
+  font-size: 15px;
+}
+
+.backup-status.warn {
+  border-color: #e7b54a;
+  background: #fff6e0;
+}
+
+.backup-status.warn strong {
+  color: #9a5b00;
+}
+
+.steps {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.restore-warning {
+  padding: 10px 12px;
+  border: 1px solid #f0b9b0;
+  border-radius: 12px;
+  color: #7a2318;
+  background: #fdeeec;
+  font-size: 13px;
+}
+
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.check-label input {
+  width: 20px;
+  height: 20px;
+}
+
+.gate-restore {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.receipt-warranty {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1.5px dashed var(--navy);
+  border-radius: 10px;
+  text-align: center;
+  font-size: 13px;
+}
+
+.receipt-warranty strong {
+  color: var(--navy);
+  font-size: 14px;
+}
+
+.receipt-warranty small {
+  color: var(--muted);
+}

@@ -1,6 +1,7 @@
 /** Simpan file lalu buka lembar Bagikan Android (WhatsApp, Drive, Simpan ke…). */
 export interface FileSharer {
-  share(fileName: string, data: Uint8Array, mimeType: string): Promise<void>;
+  /** true bila dibagikan/disimpan, false bila lembar Bagikan ditutup. */
+  share(fileName: string, data: Uint8Array, mimeType: string): Promise<boolean>;
 }
 
 export async function createCapacitorFileSharer(): Promise<FileSharer> {
@@ -17,10 +18,11 @@ export async function createCapacitorFileSharer(): Promise<FileSharer> {
       });
       const { uri } = await Filesystem.getUri({ path, directory: Directory.Cache });
       try {
-        await Share.share({ files: [uri], title: fileName, dialogTitle: "Simpan atau kirim laporan" });
+        await Share.share({ files: [uri], title: fileName, dialogTitle: "Simpan atau kirim file" });
+        return true;
       } catch (error) {
         // Menutup lembar Bagikan bukan kesalahan.
-        if (error instanceof Error && /cancel/i.test(error.message)) return;
+        if (error instanceof Error && /cancel/i.test(error.message)) return false;
         throw error;
       }
     },
@@ -38,6 +40,7 @@ export function createBrowserFileSharer(): FileSharer {
       link.download = fileName;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      return true;
     },
   };
 }

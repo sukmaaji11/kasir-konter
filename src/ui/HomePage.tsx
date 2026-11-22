@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { backupAgeText, backupIsDue } from "./BackupPanel";
 import { can } from "../domain/auth";
 import {
   BUSINESS_LINE_LABELS,
@@ -111,15 +112,19 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
       lowPerdana: digital.filter((item) => item.tracksStock && item.stockQuantity <= LOW_STOCK).length,
       payments: owner ? await ctx.repo.paymentTotals(weekRange) : [],
       topItem: owner ? ((await ctx.repo.itemSales(weekRange))[0] ?? null) : null,
+      lastBackup: owner ? await ctx.backup.lastExportAtMs() : null,
     };
-  }, [ctx.repo, ctx.dataVersion, owner]);
+  }, [ctx.repo, ctx.backup, ctx.dataVersion, owner]);
 
   const d = data.data;
   const hour = Number(HOUR.format(new Date()));
   const greeting = hour < 11 ? "Selamat pagi" : hour < 15 ? "Selamat siang" : hour < 18 ? "Selamat sore" : "Selamat malam";
   const weekMax = d ? d.week.reduce((max, item) => (item.totals.revenueRupiah > max ? item.totals.revenueRupiah : max), 1n) : 1n;
-  const attention = d ? d.readyOrders.length + d.lowStock.length + (owner && d.oldPhones > 0 ? 1 : 0) : 0;
   const empty = d !== null && d.phoneCount === 0 && d.accessoryCount === 0 && d.digitalCount === 0;
+  const backupDue = d !== null && owner && !empty && backupIsDue(d.lastBackup);
+  const attention = d
+    ? d.readyOrders.length + d.lowStock.length + (owner && d.oldPhones > 0 ? 1 : 0) + (backupDue ? 1 : 0)
+    : 0;
 
   const paymentTotal = d?.payments.reduce((sum, item) => sum + item.amountRupiah, 0n) ?? 0n;
   const paymentDetail =
@@ -301,6 +306,19 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
                   <span className="attention-main">
                     <strong>{d.oldPhones} HP lebih dari {OLD_STOCK_DAYS} hari di stok</strong>
                     <span className="muted small">Pertimbangkan turunkan harga supaya modal berputar</span>
+                  </span>
+                </button>
+              </li>
+            )}
+            {backupDue && (
+              <li>
+                <button type="button" className="attention-row" onClick={() => ctx.open("pengaturan")}>
+                  <span aria-hidden="true">💾</span>
+                  <span className="attention-main">
+                    <strong>Cadangkan data konter</strong>
+                    <span className="muted small">
+                      {backupAgeText(d.lastBackup)} · Pengaturan → Cadangan &amp; pindah HP, simpan ke Drive/WA
+                    </span>
                   </span>
                 </button>
               </li>

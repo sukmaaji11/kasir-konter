@@ -1,6 +1,8 @@
 import { Capacitor } from "@capacitor/core";
 import { useEffect, useState } from "react";
 import { AuthApplicationService } from "../application/auth";
+import { BackupService } from "../application/backup";
+import { APP_NAME } from "../app-info";
 import { LicenseApplicationService } from "../application/license";
 import { PrintingApplicationService } from "../application/printing";
 import type { FileSharer } from "../reports/file-share";
@@ -33,6 +35,7 @@ export interface Runtime {
   readonly license: LicenseApplicationService;
   readonly printing: PrintingApplicationService;
   readonly files: FileSharer;
+  readonly backup: BackupService;
   readonly isBrowserDevelopment: boolean;
 }
 
@@ -84,7 +87,7 @@ export function App() {
   if (runtime === null) return <SplashScreen animate={false} />;
 
   return (
-    <AccessGate auth={runtime.auth} license={runtime.license}>
+    <AccessGate auth={runtime.auth} license={runtime.license} backup={runtime.backup}>
       {(user, lock) => <MainApp runtime={runtime} user={user} lock={lock} />}
     </AccessGate>
   );
@@ -126,6 +129,7 @@ export function MainApp({
     license: runtime.license,
     printing: runtime.printing,
     files: runtime.files,
+    backup: runtime.backup,
     user,
     store,
     dataVersion,
@@ -207,6 +211,7 @@ async function openRuntime(): Promise<Runtime> {
       ...accessServices(opened.repository, async () => (await Device.getId()).identifier),
       printing: new PrintingApplicationService(opened.repository, await createCapacitorPrinterPort()),
       files: await createCapacitorFileSharer(),
+      backup: new BackupService(opened.repository, APP_NAME, saveSafetyCopy),
       isBrowserDevelopment: false,
     };
   }
@@ -220,10 +225,23 @@ async function openRuntime(): Promise<Runtime> {
       ...accessServices(opened.repository, async () => browserDeviceId()),
       printing: new PrintingApplicationService(opened.repository, createConsolePrinterPort()),
       files: createBrowserFileSharer(),
+      backup: new BackupService(opened.repository, APP_NAME),
       isBrowserDevelopment: true,
     };
   }
   throw new Error("Aplikasi perlu dijalankan di perangkat Android.");
+}
+
+/** Salinan data sebelum dipulihkan, di memori aplikasi (bukan galeri/unduhan). */
+async function saveSafetyCopy(content: string): Promise<void> {
+  const { Directory, Encoding, Filesystem } = await import("@capacitor/filesystem");
+  await Filesystem.writeFile({
+    path: "cadangan/sebelum-pulihkan.json",
+    directory: Directory.Data,
+    recursive: true,
+    data: content,
+    encoding: Encoding.UTF8,
+  });
 }
 
 function accessServices(repository: KonterRepository, readDeviceId: () => Promise<string>) {

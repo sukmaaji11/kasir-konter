@@ -1,0 +1,642 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Admin Lisensi · Kasir Konter</title>
+<!--
+  Halaman Admin OFFLINE untuk membuat kode aktivasi & kode reset PIN.
+  JANGAN unggah halaman ini beserta file kunci ke internet.
+  File ini DIBUAT OTOMATIS dari admin.template.html oleh:
+    npm run admin:page
+  Ubah template-nya, bukan admin.html.
+-->
+<style>
+  :root {
+    --green: #1f3a5f;
+    --green-dark: #152a46;
+    --gold: #f2b544;
+    --cream: #e8eef6;
+    --bg: #f3f5f8;
+    --surface: #ffffff;
+    --border: #dfe4eb;
+    --muted: #637083;
+    --text: #1d2733;
+    --red: #b23c2f;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    color: var(--text);
+    background: var(--bg);
+    font: 15px/1.5 "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  header {
+    color: #ffffff;
+    background: linear-gradient(135deg, #2c5487, var(--green-dark));
+  }
+  .wrap { width: min(100% - 32px, 1180px); margin: 0 auto; }
+  header .wrap { display: flex; align-items: center; gap: 14px; padding: 18px 0; }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 0; color: rgba(255,255,255,.75); font-size: 13px; }
+  .badge-offline {
+    margin-left: auto; padding: 6px 12px; border-radius: 999px;
+    color: var(--green-dark); background: var(--gold); font-size: 12px; font-weight: 800;
+  }
+  main.wrap { display: grid; grid-template-columns: minmax(0, 400px) minmax(0, 1fr); gap: 18px; padding: 20px 0 40px; }
+  @media (max-width: 900px) { main.wrap { grid-template-columns: 1fr; } }
+  .col { display: grid; gap: 16px; align-content: start; }
+  .card {
+    display: grid; gap: 12px; padding: 18px;
+    border: 1px solid var(--border); border-radius: 18px; background: var(--surface);
+    box-shadow: 0 2px 12px rgba(20,40,70,.05);
+  }
+  .card h2 { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 16px; }
+  .step {
+    display: inline-grid; width: 24px; height: 24px; place-items: center; flex: 0 0 auto;
+    border-radius: 999px; color: #fff; background: var(--green); font-size: 13px;
+  }
+  label { display: grid; gap: 5px; color: var(--muted); font-size: 13px; font-weight: 700; }
+  input[type=text], input[type=tel], input[type=search], textarea {
+    width: 100%; min-height: 44px; padding: 10px 12px;
+    border: 1px solid #d5dce6; border-radius: 12px;
+    color: var(--text); background: #fff; font: inherit; font-size: 15px;
+  }
+  textarea { min-height: 150px; resize: vertical; font-size: 14px; }
+  input:focus, textarea:focus { border-color: var(--green); outline: none; box-shadow: 0 0 0 3px rgba(31,58,95,.15); }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; letter-spacing: .04em; }
+  .device-input { font-size: 22px !important; text-transform: uppercase; text-align: center; letter-spacing: .12em; }
+  button {
+    min-height: 42px; padding: 0 16px; border: 0; border-radius: 12px;
+    font: inherit; font-weight: 700; cursor: pointer;
+  }
+  button:disabled { cursor: not-allowed; opacity: .45; }
+  .primary { color: #fff; background: var(--green); }
+  .primary:hover:not(:disabled) { background: var(--green-dark); }
+  .secondary { color: var(--green-dark); background: #e7edf5; }
+  .ghost { color: var(--muted); background: transparent; }
+  .danger { color: var(--red); background: #fbeae7; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .row > * { flex: 1 1 auto; }
+  .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: #e8edf3; }
+  .segmented button { color: var(--muted); background: transparent; }
+  .segmented button[aria-pressed=true] { color: var(--green-dark); background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+  .drop {
+    display: grid; gap: 4px; place-items: center; padding: 20px; text-align: center;
+    border: 2px dashed #b9c7da; border-radius: 16px; color: var(--muted); background: #f1f5fa; cursor: pointer;
+  }
+  .drop.over { border-color: var(--green); background: #e3ebf5; }
+  .drop strong { color: var(--green-dark); }
+  .status { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 14px; font-size: 14px; }
+  .status.ok { color: #1f5a30; background: #e1f1e3; }
+  .status.warn { color: #7a4a0c; background: #fcefd9; }
+  .status.err { color: #8e2a20; background: #fbe4e0; }
+  .status b { display: block; }
+  .result-code {
+    padding: 14px; border-radius: 14px; color: var(--green-dark); background: #f1f5fa;
+    font-size: 15px; font-weight: 700; word-break: break-all; line-height: 1.7;
+  }
+  .muted { color: var(--muted); font-size: 13px; }
+  .hidden { display: none !important; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { padding: 12px; border-radius: 14px; background: #eef3f9; }
+  .stat span { display: block; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .stat strong { font-size: 22px; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { padding: 10px 9px; border-bottom: 1px solid #e8ecf1; text-align: left; vertical-align: top; white-space: nowrap; }
+  th { position: sticky; top: 0; color: #fff; background: var(--green); font-size: 12px; }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr:nth-child(even) { background: #f8fafc; }
+  td.wrapcell { white-space: normal; min-width: 140px; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+  .pill.activation { color: #1f5a30; background: #e1f1e3; }
+  .pill.reset { color: #7a4a0c; background: #fcefd9; }
+  td button { min-height: 30px; padding: 0 10px; font-size: 12px; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    padding: 12px 18px; border-radius: 12px; color: #fff; background: #152a46; font-weight: 600;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  footer { padding: 0 0 28px; color: var(--muted); font-size: 12px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <svg width="44" height="44" viewBox="0 0 64 64" aria-hidden="true">
+      <rect width="64" height="64" rx="16" fill="#1f3a5f" stroke="rgba(255,255,255,.35)"/>
+      <rect x="20" y="10" width="24" height="44" rx="5" fill="#f4f7fb"/>
+      <rect x="23.5" y="15" width="17" height="30" rx="2" fill="#1f3a5f"/>
+      <circle cx="32" cy="49.5" r="2" fill="#1f3a5f"/>
+      <path d="M26.5 30.5l4 4 7.5-8" fill="none" stroke="#f2b544" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <div>
+      <h1>Admin Lisensi</h1>
+      <p>Kasir Konter · buat kode aktivasi &amp; kode reset PIN</p>
+    </div>
+    <span class="badge-offline">OFFLINE · kunci tidak dikirim ke mana pun</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="col">
+    <section class="card">
+      <h2><span class="step">1</span> Muat kunci rahasia</h2>
+      <label class="drop" id="drop">
+        <strong>Seret file kunci ke sini</strong>
+        <span>atau klik untuk memilih <span class="mono">license-private-key.json</span></span>
+        <span class="muted">Biasanya di Documents\KasirKonterAdmin</span>
+        <input type="file" id="keyFile" accept=".json,application/json" hidden />
+      </label>
+      <div id="keyStatus" class="status warn"><div><b>Kunci belum dimuat</b>Kunci hanya dibaca di browser ini dan hilang saat halaman ditutup.</div></div>
+      <button class="ghost hidden" id="forgetKey">Lupakan kunci</button>
+    </section>
+
+    <section class="card">
+      <h2><span class="step">2</span> Data pelanggan</h2>
+      <div class="segmented" role="group" aria-label="Jenis kode">
+        <button type="button" id="typeActivation" aria-pressed="true">Aktivasi (HP baru)</button>
+        <button type="button" id="typeReset" aria-pressed="false">Reset PIN Owner</button>
+      </div>
+      <label>Kode perangkat (dari layar aplikasi pelanggan)
+        <input type="text" id="device" class="mono device-input" placeholder="XXXXX-XXXXX" maxlength="13" autocomplete="off" spellcheck="false" />
+      </label>
+      <div id="deviceHint" class="muted">10 huruf/angka, contoh 73PKR-D0ZQP.</div>
+      <div id="duplicate" class="status warn hidden"></div>
+      <label>Nama pelanggan / usaha
+        <input type="text" id="name" placeholder="Contoh: Bakso Pak Din" maxlength="60" />
+      </label>
+      <label>No. WhatsApp
+        <input type="tel" id="phone" placeholder="0812xxxxxxxx" maxlength="20" />
+      </label>
+      <label>Catatan (opsional)
+        <input type="text" id="note" placeholder="Contoh: Lunas Rp150.000 via transfer" maxlength="120" />
+      </label>
+      <button class="primary" id="generate" disabled>Buat kode aktivasi</button>
+      <div id="formError" class="status err hidden"></div>
+    </section>
+
+    <section class="card hidden" id="resultCard">
+      <h2><span class="step">3</span> <span id="resultTitle">Kode aktivasi</span></h2>
+      <div class="result-code mono" id="resultCode"></div>
+      <div class="row">
+        <button class="primary" id="copyCode">Salin kode</button>
+        <button class="secondary" id="copyMessage">Salin pesan WA</button>
+        <button class="secondary" id="openWa">Buka WhatsApp</button>
+      </div>
+      <label>Pesan untuk pelanggan (boleh diedit)
+        <textarea id="message"></textarea>
+      </label>
+    </section>
+  </div>
+
+  <div class="col">
+    <section class="card">
+      <h2>Riwayat lisensi</h2>
+      <div class="stats">
+        <div class="stat"><span>Perangkat diaktivasi</span><strong id="statDevices">0</strong></div>
+        <div class="stat"><span>Kode aktivasi</span><strong id="statActivation">0</strong></div>
+        <div class="stat"><span>Kode reset</span><strong id="statReset">0</strong></div>
+      </div>
+      <input type="search" id="search" placeholder="Cari nama, WA, atau kode perangkat…" />
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Pelanggan</th><th>WhatsApp</th><th>Kode perangkat</th><th>Jenis</th><th></th></tr></thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <div class="row">
+        <button class="secondary" id="exportCsv">Ekspor CSV (Excel)</button>
+        <button class="secondary" id="backupHistory">Cadangkan riwayat</button>
+        <button class="ghost" id="restoreHistory">Pulihkan riwayat…</button>
+        <input type="file" id="restoreFile" accept=".json,application/json" hidden />
+      </div>
+      <p class="muted">Riwayat tersimpan di browser ini saja. Cadangkan secara berkala (mis. ke flashdisk bersama file kunci).</p>
+    </section>
+  </div>
+</main>
+<footer>Kasir Konter · Powered by Jadicuan</footer>
+<div class="toast hidden" id="toast" role="status"></div>
+
+<script type="module">
+// ---------- Inti lisensi (disisipkan dari tools/license/license-core.mjs) ----------
+// Inti pembuat kode lisensi untuk Admin. Format pesan HARUS sama dengan
+// src/licensing/license.ts (diuji di tests/auth-license.test.ts).
+// Hanya memakai WebCrypto standar, jadi berjalan di Node 20+ maupun browser:
+// file ini juga disisipkan ke tools/license/admin.html oleh build-admin-page.mjs.
+
+const webcrypto = globalThis.crypto;
+const subtle = webcrypto.subtle;
+const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const FORMAT_VERSION = 1;
+const TYPE_BYTES = { activation: 1, reset: 2 };
+const EPOCH_MS = Date.UTC(2026, 0, 1);
+
+function normalizeCode(code) {
+  return code.toUpperCase().replace(/[\s-]/g, "").replace(/O/g, "0").replace(/[IL]/g, "1");
+}
+
+function base32Encode(bytes) {
+  let bits = 0;
+  let value = 0;
+  let output = "";
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      output += ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+    value &= (1 << bits) - 1;
+  }
+  if (bits > 0) output += ALPHABET[(value << (5 - bits)) & 31];
+  return output;
+}
+
+function encodePayload(type, issuedDay, nonce) {
+  const bytes = new Uint8Array(8);
+  const view = new DataView(bytes.buffer);
+  view.setUint8(0, FORMAT_VERSION);
+  view.setUint8(1, TYPE_BYTES[type]);
+  view.setUint16(2, issuedDay);
+  view.setUint32(4, nonce >>> 0);
+  return bytes;
+}
+
+function signedMessage(type, deviceCode, issuedDay, nonce) {
+  const header = new TextEncoder().encode(`KKO${FORMAT_VERSION}`);
+  const device = new TextEncoder().encode(normalizeCode(deviceCode));
+  const payload = encodePayload(type, issuedDay, nonce);
+  return Uint8Array.from([...header, ...device, ...payload]);
+}
+
+function assertDeviceCode(deviceCode) {
+  const normalized = normalizeCode(deviceCode);
+  if (!/^[0-9A-HJKMNP-TV-Z]{10}$/.test(normalized)) {
+    throw new Error(`Kode perangkat tidak valid: "${deviceCode}" (harus 10 karakter, mis. ABCDE-12345).`);
+  }
+  return normalized;
+}
+
+async function generateKeyPair() {
+  const pair = await subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  return {
+    privateJwk: await subtle.exportKey("jwk", pair.privateKey),
+    publicJwk: await subtle.exportKey("jwk", pair.publicKey),
+  };
+}
+
+/** Buat kode untuk satu perangkat. type: "activation" | "reset". */
+async function createLicenseCode({ privateJwk, deviceCode, type, now = Date.now(), nonce }) {
+  if (!(type in TYPE_BYTES)) throw new Error(`Tipe kode tidak dikenal: ${type}`);
+  const device = assertDeviceCode(deviceCode);
+  const issuedDay = Math.max(0, Math.floor((now - EPOCH_MS) / 86_400_000));
+  const codeNonce = nonce ?? webcrypto.getRandomValues(new Uint32Array(1))[0];
+  const key = await subtle.importKey("jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const signature = new Uint8Array(
+    await subtle.sign({ name: "ECDSA", hash: "SHA-256" }, key, signedMessage(type, device, issuedDay, codeNonce)),
+  );
+  return base32Encode(Uint8Array.from([...encodePayload(type, issuedDay, codeNonce), ...signature]));
+}
+
+function formatLicenseCode(code) {
+  return normalizeCode(code).replace(/(.{4})(?=.)/g, "$1-");
+}
+
+function publicKeyModule(publicJwk) {
+  const { kty, crv, x, y } = publicJwk;
+  return `// Kunci PUBLIK untuk memeriksa kode lisensi. Aman disimpan di repo.
+// Dibuat oleh: node tools/license/admin.mjs init
+const LICENSE_PUBLIC_KEY: JsonWebKey = ${JSON.stringify({ kty, crv, x, y }, null, 2)};
+`;
+}
+// ---------- Kunci publik yang tertanam di aplikasi ----------
+const APP_PUBLIC_KEY = {"kty":"EC","crv":"P-256","x":"PDbrhFkE74SyeHFXKMsvUDX-5LVmMxQQBmN-cs9v7h0","y":"UAjA4fhP7RW_ncPCpPr6ueG7HIdDZ5xRDk-6hpSuWRc"};
+
+const HISTORY_KEY = "kko-admin-license-history-v1";
+const $ = (id) => document.getElementById(id);
+let privateJwk = null;
+let type = "activation";
+let lastResult = null;
+
+// ---------- Riwayat ----------
+function loadHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function saveHistory(items) {
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(items));
+    return true;
+  } catch {
+    toast("Riwayat gagal disimpan di browser. Ekspor CSV untuk menyimpannya.");
+    return false;
+  }
+}
+let history = loadHistory();
+
+function formatDevice(value) {
+  const n = normalizeCode(value).replace(/[^0-9A-Z]/g, "").slice(0, 10);
+  return n.length > 5 ? `${n.slice(0, 5)}-${n.slice(5)}` : n;
+}
+function formatDate(ms) {
+  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(ms);
+}
+function escapeHtml(text) {
+  return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+}
+function waNumber(phone) {
+  let digits = String(phone ?? "").replace(/\D/g, "");
+  if (digits.startsWith("0")) digits = `62${digits.slice(1)}`;
+  else if (digits.startsWith("8")) digits = `62${digits}`;
+  return digits;
+}
+
+function renderHistory() {
+  const query = $("search").value.trim().toLowerCase();
+  const normalizedQuery = normalizeCode(query);
+  const rows = history
+    .filter((item) => {
+      if (query.length === 0) return true;
+      return [item.name, item.phone, item.note].some((v) => String(v ?? "").toLowerCase().includes(query)) ||
+        (normalizedQuery.length > 0 && item.deviceCode.includes(normalizedQuery));
+    })
+    .sort((a, b) => b.issuedAt - a.issuedAt);
+  $("historyBody").innerHTML = rows.length === 0
+    ? `<tr><td colspan="6" class="empty">${history.length === 0 ? "Belum ada kode yang dibuat." : "Tidak ada yang cocok."}</td></tr>`
+    : rows.map((item) => `<tr>
+        <td>${escapeHtml(formatDate(item.issuedAt))}</td>
+        <td class="wrapcell"><b>${escapeHtml(item.name || "-")}</b>${item.note ? `<div class="muted">${escapeHtml(item.note)}</div>` : ""}</td>
+        <td>${escapeHtml(item.phone || "-")}</td>
+        <td class="mono">${escapeHtml(formatDevice(item.deviceCode))}</td>
+        <td><span class="pill ${item.type}">${item.type === "activation" ? "Aktivasi" : "Reset PIN"}</span></td>
+        <td><button class="secondary" data-copy="${escapeHtml(item.id)}" title="Salin kode lisensi">Salin</button></td>
+      </tr>`).join("");
+  const devices = new Set(history.filter((i) => i.type === "activation").map((i) => i.deviceCode));
+  $("statDevices").textContent = devices.size;
+  $("statActivation").textContent = history.filter((i) => i.type === "activation").length;
+  $("statReset").textContent = history.filter((i) => i.type === "reset").length;
+}
+
+$("historyBody").addEventListener("click", (event) => {
+  const id = event.target?.dataset?.copy;
+  if (id === undefined) return;
+  const item = history.find((entry) => entry.id === id);
+  if (item) copy(formatLicenseCode(item.code), "Kode disalin");
+});
+$("search").addEventListener("input", renderHistory);
+
+// ---------- Kunci ----------
+function setKeyStatus(kind, title, body) {
+  $("keyStatus").className = `status ${kind}`;
+  $("keyStatus").innerHTML = `<div><b>${escapeHtml(title)}</b>${escapeHtml(body)}</div>`;
+}
+async function loadKeyFile(file) {
+  try {
+    const parsed = JSON.parse(await file.text());
+    const jwk = parsed.privateJwk ?? parsed;
+    if (jwk?.kty !== "EC" || jwk?.crv !== "P-256" || typeof jwk?.d !== "string") {
+      throw new Error("Ini bukan file kunci rahasia lisensi.");
+    }
+    // Uji tanda tangan sekali supaya file rusak langsung ketahuan.
+    await createLicenseCode({ privateJwk: jwk, deviceCode: "0000000000", type: "activation" });
+    privateJwk = jwk;
+    if (jwk.x === APP_PUBLIC_KEY.x && jwk.y === APP_PUBLIC_KEY.y) {
+      setKeyStatus("ok", "Kunci dimuat ✓ cocok dengan aplikasi", `File: ${file.name}`);
+    } else {
+      setKeyStatus("err", "Kunci TIDAK cocok dengan aplikasi", "Kode dari kunci ini akan ditolak aplikasi. Pilih file kunci yang benar.");
+      privateJwk = null;
+    }
+  } catch (error) {
+    privateJwk = null;
+    setKeyStatus("err", "Kunci gagal dimuat", error instanceof Error ? error.message : "File tidak bisa dibaca.");
+  }
+  $("forgetKey").classList.toggle("hidden", privateJwk === null);
+  updateForm();
+}
+$("keyFile").addEventListener("change", (event) => {
+  const file = event.target.files?.[0];
+  if (file) void loadKeyFile(file);
+  event.target.value = "";
+});
+const drop = $("drop");
+drop.addEventListener("dragover", (event) => { event.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (event) => {
+  event.preventDefault();
+  drop.classList.remove("over");
+  const file = event.dataTransfer?.files?.[0];
+  if (file) void loadKeyFile(file);
+});
+$("forgetKey").addEventListener("click", () => {
+  privateJwk = null;
+  setKeyStatus("warn", "Kunci dilupakan", "Muat lagi untuk membuat kode.");
+  $("forgetKey").classList.add("hidden");
+  updateForm();
+});
+
+// ---------- Formulir ----------
+function setType(next) {
+  type = next;
+  $("typeActivation").setAttribute("aria-pressed", String(next === "activation"));
+  $("typeReset").setAttribute("aria-pressed", String(next === "reset"));
+  $("generate").textContent = next === "activation" ? "Buat kode aktivasi" : "Buat kode reset PIN";
+  updateForm();
+}
+$("typeActivation").addEventListener("click", () => setType("activation"));
+$("typeReset").addEventListener("click", () => setType("reset"));
+
+function deviceValid() {
+  try {
+    assertDeviceCode($("device").value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function updateForm() {
+  const valid = deviceValid();
+  const raw = $("device").value.trim();
+  $("deviceHint").textContent = raw.length === 0 || valid
+    ? "10 huruf/angka, contoh 73PKR-D0ZQP."
+    : "Kode perangkat belum lengkap atau ada huruf yang tidak dipakai (I, L, O, U).";
+  $("deviceHint").style.color = raw.length === 0 || valid ? "" : "var(--red)";
+  $("generate").disabled = privateJwk === null || !valid;
+  $("generate").title = privateJwk === null ? "Muat kunci rahasia dulu" : "";
+
+  const box = $("duplicate");
+  if (!valid) { box.classList.add("hidden"); return; }
+  const device = normalizeCode(raw);
+  const previous = history.filter((item) => item.deviceCode === device).sort((a, b) => b.issuedAt - a.issuedAt);
+  const activation = previous.find((item) => item.type === "activation");
+  if (activation === undefined) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  box.innerHTML = `<div><b>Perangkat ini sudah pernah diaktivasi</b>
+    ${escapeHtml(formatDate(activation.issuedAt))} untuk ${escapeHtml(activation.name || "pelanggan tanpa nama")}.
+    ${type === "activation" ? "Kode lama masih berlaku; Anda bisa mengirim ulang kode lama." : ""}</div>`;
+  if (type === "activation") {
+    const button = document.createElement("button");
+    button.className = "secondary";
+    button.textContent = "Pakai kode lama";
+    button.addEventListener("click", () => showResult(activation, false));
+    box.append(button);
+  }
+  if (!$("name").value && activation.name) $("name").value = activation.name;
+  if (!$("phone").value && activation.phone) $("phone").value = activation.phone;
+}
+$("device").addEventListener("input", (event) => {
+  const input = event.target;
+  const formatted = formatDevice(input.value);
+  if (formatted !== input.value) input.value = formatted;
+  updateForm();
+});
+
+function messageFor(item) {
+  const greeting = item.name ? `Halo ${item.name}` : "Halo";
+  const code = formatLicenseCode(item.code);
+  const device = formatDevice(item.deviceCode);
+  if (item.type === "activation") {
+    return `${greeting}, terima kasih sudah memakai Kasir Konter 🙏
+
+Kode perangkat: ${device}
+Kode aktivasi:
+${code}
+
+Cara pakai: buka aplikasi → tempel kode di kolom "Kode aktivasi dari Admin" → tekan Aktifkan.
+Kode ini hanya berlaku untuk HP/tablet tersebut.`;
+  }
+  return `${greeting}, berikut kode reset PIN Owner Kasir Konter untuk perangkat ${device}:
+
+${code}
+
+Cara pakai: di layar PIN tekan "Lupa PIN Owner?" → tempel kode → Lanjut → buat PIN baru.
+Kode hanya bisa dipakai sekali. Data jualan tidak berubah.`;
+}
+
+function showResult(item, isNew) {
+  lastResult = item;
+  $("resultCard").classList.remove("hidden");
+  $("resultTitle").textContent = item.type === "activation"
+    ? (isNew ? "Kode aktivasi baru" : "Kode aktivasi (lama)")
+    : "Kode reset PIN (sekali pakai)";
+  $("resultCode").textContent = formatLicenseCode(item.code);
+  $("message").value = messageFor(item);
+  $("openWa").disabled = waNumber(item.phone).length < 10;
+  $("resultCard").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+$("generate").addEventListener("click", async () => {
+  $("formError").classList.add("hidden");
+  if (privateJwk === null) return;
+  try {
+    const deviceCode = assertDeviceCode($("device").value);
+    const code = await createLicenseCode({ privateJwk, deviceCode, type });
+    const item = {
+      id: crypto.randomUUID(),
+      issuedAt: Date.now(),
+      type,
+      deviceCode,
+      code,
+      name: $("name").value.trim(),
+      phone: $("phone").value.trim(),
+      note: $("note").value.trim(),
+    };
+    history = [...history, item];
+    saveHistory(history);
+    renderHistory();
+    showResult(item, true);
+    updateForm();
+    toast(type === "activation" ? "Kode aktivasi dibuat" : "Kode reset dibuat");
+  } catch (error) {
+    $("formError").classList.remove("hidden");
+    $("formError").textContent = error instanceof Error ? error.message : "Kode gagal dibuat.";
+  }
+});
+
+// ---------- Salin & WhatsApp ----------
+let toastTimer = 0;
+function toast(text) {
+  $("toast").textContent = text;
+  $("toast").classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.add("hidden"), 2500);
+}
+async function copy(text, done) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+  toast(done);
+}
+$("copyCode").addEventListener("click", () => lastResult && copy(formatLicenseCode(lastResult.code), "Kode disalin"));
+$("copyMessage").addEventListener("click", () => copy($("message").value, "Pesan WhatsApp disalin"));
+$("openWa").addEventListener("click", () => {
+  if (!lastResult) return;
+  const number = waNumber($("phone").value || lastResult.phone);
+  window.open(`https://wa.me/${number}?text=${encodeURIComponent($("message").value)}`, "_blank", "noopener");
+});
+
+// ---------- Ekspor & cadangan riwayat ----------
+function download(name, content, mime) {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+$("exportCsv").addEventListener("click", () => {
+  const cell = (value) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const lines = [["Tanggal", "Pelanggan", "WhatsApp", "Kode perangkat", "Jenis", "Kode", "Catatan"].map(cell).join(";")];
+  for (const item of [...history].sort((a, b) => a.issuedAt - b.issuedAt)) {
+    lines.push([
+      formatDate(item.issuedAt), item.name, item.phone, formatDevice(item.deviceCode),
+      item.type === "activation" ? "Aktivasi" : "Reset PIN", formatLicenseCode(item.code), item.note,
+    ].map(cell).join(";"));
+  }
+  // BOM supaya Excel membaca UTF-8; titik koma cocok untuk Excel berbahasa Indonesia.
+  download(`riwayat-lisensi-${today()}.csv`, `﻿${lines.join("\r\n")}`, "text/csv;charset=utf-8");
+});
+$("backupHistory").addEventListener("click", () => {
+  download(`riwayat-lisensi-${today()}.json`, JSON.stringify({ version: 1, items: history }, null, 2), "application/json");
+});
+$("restoreHistory").addEventListener("click", () => $("restoreFile").click());
+$("restoreFile").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const parsed = JSON.parse(await file.text());
+    const items = Array.isArray(parsed) ? parsed : parsed.items;
+    if (!Array.isArray(items)) throw new Error("Format file riwayat tidak dikenal.");
+    const valid = items.filter((item) => item && typeof item.id === "string" && typeof item.code === "string" && typeof item.deviceCode === "string");
+    const byId = new Map(history.map((item) => [item.id, item]));
+    for (const item of valid) byId.set(item.id, item);
+    history = [...byId.values()];
+    saveHistory(history);
+    renderHistory();
+    toast(`${valid.length} catatan dipulihkan`);
+  } catch (error) {
+    toast(error instanceof Error ? error.message : "File riwayat tidak bisa dibaca.");
+  }
+});
+
+renderHistory();
+updateForm();
+</script>
+</body>
+</html>

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import type { AuthApplicationService } from "../application/auth";
+import type { BackupService } from "../application/backup";
+import { RestoreButton } from "./BackupPanel";
 import type { LicenseApplicationService } from "../application/license";
 import type { AppUser } from "../domain/auth";
 import {
@@ -29,10 +31,12 @@ const MIN_SPLASH_MS = 1200;
 export function AccessGate({
   auth,
   license,
+  backup,
   children,
 }: {
   readonly auth: AuthApplicationService;
   readonly license: LicenseApplicationService;
+  readonly backup: BackupService;
   readonly children: (user: AppUser, lock: () => void) => ReactNode;
 }) {
   const [state, setState] = useState<GateState>({ kind: "checking" });
@@ -81,6 +85,8 @@ export function AccessGate({
       return (
         <OwnerSetupScreen
           auth={auth}
+          backup={backup}
+          onRestored={() => void advance()}
           onCreated={(user) => setState({ kind: "ready", user })}
         />
       );
@@ -176,9 +182,13 @@ function ActivationScreen({
 
 function OwnerSetupScreen({
   auth,
+  backup,
+  onRestored,
   onCreated,
 }: {
   readonly auth: AuthApplicationService;
+  readonly backup: BackupService;
+  readonly onRestored: () => void;
   readonly onCreated: (user: AppUser) => void;
 }) {
   const [name, setName] = useState("");
@@ -210,6 +220,10 @@ function OwnerSetupScreen({
           </label>
           <button className="button button-primary">Lanjut buat PIN</button>
         </form>
+        <div className="gate-restore">
+          <p className="muted small">Pindah dari HP lama? Pakai file cadangan dari HP lama, semua data dan PIN ikut pindah.</p>
+          <RestoreButton backup={backup} onRestored={onRestored} label="Pulihkan dari cadangan" quiet />
+        </div>
       </GateLayout>
     );
   }

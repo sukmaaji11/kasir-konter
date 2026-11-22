@@ -56,3 +56,30 @@ export function serviceProfit(charges: ServiceCharges): Rupiah {
 export function serviceBalanceDue(totalChargeRupiah: Rupiah, depositRupiah: Rupiah): Rupiah {
   return totalChargeRupiah - depositRupiah;
 }
+
+// ----- Garansi service -----------------------------------------------------
+
+export const MAX_WARRANTY_DAYS = 365;
+
+/** Pilihan cepat masa garansi (hari). 0 = tanpa garansi. */
+export const WARRANTY_PRESETS: readonly number[] = [0, 7, 14, 30, 90];
+
+export interface ServiceWarrantyInput {
+  /** Lama garansi dalam hari sejak HP diambil. 0 = tanpa garansi. */
+  readonly days: number;
+  /** Ketentuan garansi, mis. "Garansi LCD, tidak berlaku jika jatuh/kena air". */
+  readonly note?: string | null;
+}
+
+export function assertWarrantyDays(days: number): number {
+  if (!Number.isSafeInteger(days) || days < 0 || days > MAX_WARRANTY_DAYS) {
+    throw new DomainError("invalid_warranty", `Masa garansi harus 0 sampai ${MAX_WARRANTY_DAYS} hari.`);
+  }
+  return days;
+}
+
+export function warrantyLabel(days: number): string {
+  if (days === 0) return "Tanpa garansi";
+  if (days % 30 === 0) return `${days / 30} bulan`;
+  return `${days} hari`;
+}

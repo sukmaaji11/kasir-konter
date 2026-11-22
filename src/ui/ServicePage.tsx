@@ -6,9 +6,21 @@ import { SERVICE_STATUS_LABELS, type ServiceStatus } from "../domain/service";
 import { CurrencyInput } from "./CurrencyInput";
 import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
-import { ageLabel, dateTimeWib, digitsToRupiah, rp, rpSigned, rupiahToDigits } from "./format";
+import { ageLabel, dateTimeWib, digitsToRupiah, rp, rpSigned, rupiahToDigits, todayKey } from "./format";
 import { serviceReceiptText, serviceStatusMessage } from "./receipts";
 import { PrintServiceButton, ServiceReceiptSheet } from "./NotaSheets";
+import {
+  ActiveWarrantySheet,
+  ImeiWarrantyNotice,
+  loadLastWarranty,
+  NO_WARRANTY,
+  rememberWarranty,
+  warrantyDraft,
+  WarrantyFields,
+  warrantyInput,
+  warrantyStatusText,
+  type WarrantyDraft,
+} from "./ServiceWarranty";
 import { openWhatsApp, shareText } from "./whatsapp";
 
 type Filter = "semua" | Exclude<ServiceStatus, "diambil">;
@@ -34,6 +46,8 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
   const [search, setSearch] = useState("");
   const [paying, setPaying] = useState<ServiceOrder | null>(null);
   const [paid, setPaid] = useState<ServiceOrder | null>(null);
+  const [checkingWarranty, setCheckingWarranty] = useState(false);
+  const [warrantyOrder, setWarrantyOrder] = useState<ServiceOrder | null>(null);
 
   const all = orders.data ?? [];
   const count = (status: ServiceStatus) => all.filter((order) => order.status === status).length;
@@ -71,6 +85,9 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
+        <button type="button" className="button button-quiet" onClick={() => setCheckingWarranty(true)}>
+          🛡 Cek garansi
+        </button>
         <button type="button" className="button button-primary" onClick={() => setCreating(true)}>
           + Service baru
         </button>
@@ -135,6 +152,17 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
         />
       )}
       {paid !== null && <ServiceReceiptSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
+      {checkingWarranty && warrantyOrder === null && (
+        <ActiveWarrantySheet
+          repo={ctx.repo}
+          dataVersion={ctx.dataVersion}
+          onClose={() => setCheckingWarranty(false)}
+          onOpen={setWarrantyOrder}
+        />
+      )}
+      {warrantyOrder !== null && (
+        <ServiceDetailSheet ctx={ctx} order={warrantyOrder} onClose={() => setWarrantyOrder(null)} onPay={() => undefined} />
+      )}
     </div>
   );
 }
@@ -152,6 +180,8 @@ export function ServicePaySheet({
   readonly onPaid: (order: ServiceOrder) => void;
 }) {
   const [payment, setPayment] = useState<PaymentMethod>("tunai");
+  const [editingWarranty, setEditingWarranty] = useState(false);
+  const [warranty, setWarranty] = useState<WarrantyDraft>(warrantyDraft(order.warrantyDays, order.warrantyNote));
   const action = useAction();
   const balance = order.balanceDueRupiah ?? 0n;
   return (
@@ -183,6 +213,21 @@ export function ServicePaySheet({
           </div>
         )}
       </dl>
+      {order.status === "selesai" &&
+        (editingWarranty ? (
+          <WarrantyFields value={warranty} onChange={setWarranty} />
+        ) : (
+          <div className="warranty-summary">
+            <span>
+              <small>Garansi</small>
+              <strong>{warrantyStatusText(order) ?? "Tanpa garansi"}</strong>
+              {order.warrantyNote !== null && <small>{order.warrantyNote}</small>}
+            </span>
+            <button type="button" className="text-button" onClick={() => setEditingWarranty(true)}>
+              Ubah
+            </button>
+          </div>
+        ))}
       {balance > 0n && (
         <div className="pay-row">
           <span className="field-label">Bayar pakai</span>
@@ -196,7 +241,9 @@ export function ServicePaySheet({
         disabled={action.busy}
         onClick={() =>
           void action.run(async () => {
-            const done = await ctx.repo.pickUpService(order.id, payment);
+            const finalWarranty = editingWarranty ? warrantyInput(warranty) : undefined;
+            const done = await ctx.repo.pickUpService(order.id, payment, finalWarranty);
+            if (finalWarranty !== undefined) await rememberWarranty(ctx.repo, finalWarranty);
             ctx.changed();
             onPaid(done);
           })
@@ -251,6 +298,7 @@ export function NewServiceSheet({
           <input inputMode="numeric" value={form.imei} onChange={(e) => set("imei")(e.target.value)} placeholder="Boleh dikosongkan" />
         </label>
       </div>
+      <ImeiWarrantyNotice repo={ctx.repo} imei={form.imei} />
       <label className="block-label">
         Keluhan *
         <textarea rows={2} value={form.complaint} onChange={(e) => set("complaint")(e.target.value)} placeholder="LCD pecah, touchscreen tidak respon" />
@@ -319,7 +367,9 @@ export function ServiceDetailSheet({
   const [charge, setCharge] = useState(rupiahToDigits(order.totalChargeRupiah ?? order.estimateRupiah));
   const [partsCost, setPartsCost] = useState(order.partsCostRupiah > 0n ? order.partsCostRupiah.toString() : "");
   const [partsNote, setPartsNote] = useState(order.partsNote ?? "");
+  const [warranty, setWarranty] = useState<WarrantyDraft>(NO_WARRANTY);
   const action = useAction();
+  const warrantyText = warrantyStatusText(order);
 
   const receipt = serviceReceiptText(order, ctx.store);
   const statusMessage = serviceStatusMessage(order, ctx.store);
@@ -331,8 +381,11 @@ export function ServiceDetailSheet({
         throw new Error(mode === "selesai" ? "Isi biaya service." : "Isi biaya cek (boleh 0).");
       }
       const charges = { totalChargeRupiah: total, partsCostRupiah: digitsToRupiah(partsCost) ?? 0n };
-      if (mode === "selesai") await ctx.repo.finishService(order.id, charges, partsNote);
-      else await ctx.repo.cancelService(order.id, charges, partsNote);
+      if (mode === "selesai") {
+        const chosen = warrantyInput(warranty);
+        await ctx.repo.finishService(order.id, charges, partsNote, chosen);
+        await rememberWarranty(ctx.repo, chosen);
+      } else await ctx.repo.cancelService(order.id, charges, partsNote);
       setCloseMode(null);
       ctx.changed();
     });
@@ -356,11 +409,29 @@ export function ServiceDetailSheet({
         {order.totalChargeRupiah !== null && <div><dt>Biaya</dt><dd>{rp(order.totalChargeRupiah)}</dd></div>}
         {order.balanceDueRupiah !== null && (
           <div className="detail-strong">
-            <dt>{order.balanceDueRupiah >= 0n ? "Sisa bayar" : "DP dikembalikan"}</dt>
+            <dt>
+              {order.balanceDueRupiah < 0n
+                ? "DP dikembalikan"
+                : order.status === "diambil"
+                  ? `Lunas${order.paymentMethod !== null ? ` (${PAYMENT_OPTIONS.find((item) => item.value === order.paymentMethod)?.label ?? ""})` : ""}`
+                  : "Sisa bayar"}
+            </dt>
             <dd>{rp(order.balanceDueRupiah >= 0n ? order.balanceDueRupiah : -order.balanceDueRupiah)}</dd>
           </div>
         )}
         {order.partsNote !== null && <div><dt>Sparepart</dt><dd>{order.partsNote}</dd></div>}
+        {warrantyText !== null && (
+          <div className={order.warrantyUntil !== null && order.warrantyUntil >= todayKey() ? "detail-strong" : undefined}>
+            <dt>Garansi</dt>
+            <dd>
+              {warrantyText}
+              {order.warrantyNote !== null && <small className="muted block">{order.warrantyNote}</small>}
+            </dd>
+          </div>
+        )}
+        {order.status === "diambil" && order.pickedUpAtMs !== null && (
+          <div><dt>Diambil</dt><dd>{dateTimeWib(order.pickedUpAtMs)}</dd></div>
+        )}
         {showProfit && order.profitRupiah !== null && (
           <div>
             <dt>Untung</dt>
@@ -390,7 +461,16 @@ export function ServiceDetailSheet({
 
       {order.status === "proses" && closeMode === null && (
         <div className="button-row">
-          <button type="button" className="button button-primary" onClick={() => setCloseMode("selesai")}>
+          <button
+            type="button"
+            className="button button-primary"
+            onClick={() =>
+              void loadLastWarranty(ctx.repo).then((last) => {
+                setWarranty(last);
+                setCloseMode("selesai");
+              })
+            }
+          >
             Perbaikan selesai
           </button>
           <button type="button" className="button button-danger-quiet" onClick={() => setCloseMode("batal")}>
@@ -416,6 +496,7 @@ export function ServiceDetailSheet({
             Catatan sparepart
             <input value={partsNote} onChange={(e) => setPartsNote(e.target.value)} placeholder="LCD OEM dari Shopee" />
           </label>
+          {closeMode === "selesai" && <WarrantyFields value={warranty} onChange={setWarranty} />}
           {showProfit && digitsToRupiah(charge) !== null && (
             <p className="profit-note">
               Untung: <strong>{rpSigned((digitsToRupiah(charge) ?? 0n) - (digitsToRupiah(partsCost) ?? 0n))}</strong>

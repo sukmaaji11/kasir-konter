@@ -1,12 +1,12 @@
 import type { SaleRecord, ServiceOrder } from "../data/repository";
-import { SERVICE_STATUS_LABELS } from "../domain/service";
+import { SERVICE_STATUS_LABELS, warrantyLabel } from "../domain/service";
 import { dateTimeWib, rp } from "./format";
 
 export interface StoreProfile {
   readonly name: string;
   readonly address: string;
   readonly phone: string;
-  /** Catatan garansi di bawah nota, mis. "Garansi toko 7 hari". */
+  /** Pesan umum di bawah semua nota (jam buka, IG). Garansi service dicatat per service. */
   readonly footer: string;
 }
 
@@ -86,6 +86,11 @@ export function serviceReceiptText(order: ServiceOrder, store: StoreProfile): st
       );
     }
   }
+  if (order.status === "diambil" && order.warrantyUntil !== null) {
+    lines.push("", `*Garansi ${warrantyLabel(order.warrantyDays)}* s/d ${longDay(order.warrantyUntil)}`);
+    if (order.warrantyNote) lines.push(`Ketentuan: ${order.warrantyNote}`);
+    lines.push("Simpan pesan ini untuk klaim garansi.");
+  }
   if (order.status === "diambil") {
     if (store.footer.trim()) lines.push("", store.footer.trim());
     lines.push("", "Terima kasih 🙏");
@@ -105,12 +110,13 @@ export function serviceStatusMessage(order: ServiceOrder, store: StoreProfile): 
       return `${greeting}\n\nHP ${order.device} (${order.number}) sedang kami kerjakan. Kami kabari lagi kalau sudah selesai ya 🙏`;
     case "selesai": {
       const balance = order.balanceDueRupiah ?? 0n;
-      return `${greeting}\n\nHP ${order.device} (${order.number}) *sudah selesai* dan bisa diambil.\nBiaya: ${rp(order.totalChargeRupiah ?? 0n)}${order.depositRupiah > 0n ? `\nDP: ${rp(order.depositRupiah)}\nSisa bayar: ${rp(balance)}` : ""}\n\nTerima kasih 🙏`;
+      const warranty = order.warrantyDays > 0 ? `\nGaransi: ${warrantyLabel(order.warrantyDays)} sejak HP diambil${order.warrantyNote ? ` (${order.warrantyNote})` : ""}` : "";
+      return `${greeting}\n\nHP ${order.device} (${order.number}) *sudah selesai* dan bisa diambil.\nBiaya: ${rp(order.totalChargeRupiah ?? 0n)}${order.depositRupiah > 0n ? `\nDP: ${rp(order.depositRupiah)}\nSisa bayar: ${rp(balance)}` : ""}${warranty}\n\nTerima kasih 🙏`;
     }
     case "batal":
       return `${greeting}\n\nMohon maaf, HP ${order.device} (${order.number}) tidak bisa kami perbaiki. HP bisa diambil kembali.${(order.totalChargeRupiah ?? 0n) > 0n ? `\nBiaya pengecekan: ${rp(order.totalChargeRupiah ?? 0n)}` : ""}\n\nTerima kasih 🙏`;
     case "diambil":
-      return `${greeting}\n\nTerima kasih sudah service di ${shop}. Kalau ada kendala dengan HP ${order.device}, kabari kami ya 🙏`;
+      return `${greeting}\n\nTerima kasih sudah service di ${shop}.${order.warrantyUntil !== null ? ` Garansi HP ${order.device} berlaku s/d ${longDay(order.warrantyUntil)}.` : ""} Kalau ada kendala dengan HP ${order.device}, kabari kami ya 🙏`;
   }
 }
 
@@ -130,4 +136,16 @@ export async function loadStoreProfile(
   } catch {
     return EMPTY_STORE_PROFILE;
   }
+}
+
+/** "2026-11-30" -> "Senin, 30 November 2026". */
+function longDay(dayKey: string): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return new Intl.DateTimeFormat("id-ID", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(Date.UTC(year!, month! - 1, day!));
 }

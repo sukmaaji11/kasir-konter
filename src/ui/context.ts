@@ -1,4 +1,5 @@
 import type { AuthApplicationService } from "../application/auth";
+import type { BackupService } from "../application/backup";
 import type { LicenseApplicationService } from "../application/license";
 import type { PrintingApplicationService } from "../application/printing";
 import type { FileSharer } from "../reports/file-share";
@@ -16,6 +17,8 @@ export interface PageContext {
   readonly printing: PrintingApplicationService;
   /** Simpan/kirim file (PDF laporan). */
   readonly files: FileSharer;
+  /** Cadangan & pindah HP. */
+  readonly backup: BackupService;
   readonly user: AppUser;
   readonly store: StoreProfile;
   readonly dataVersion: number;

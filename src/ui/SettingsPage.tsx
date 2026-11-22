@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { ADMIN_WHATSAPP, APP_NAME, APP_VERSION, BRAND_NAME, formatPhoneDisplay } from "../app-info";
 import { can, roleLabel } from "../domain/auth";
 import { PinCreator } from "./AccessScreens";
+import { backupAgeText, backupIsDue, BackupPanel } from "./BackupPanel";
 import { BrandLogo } from "./BrandLogo";
 import { PrinterSettingsPanel } from "./PrinterSettings";
 import { EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
@@ -9,13 +10,14 @@ import type { PageContext } from "./context";
 import type { StoreProfile } from "./receipts";
 import { useAndroidBack } from "./useAndroidBack";
 
-type SettingsSubpage = "profil" | "pengguna" | "printer" | "akun" | "lisensi" | "tentang";
+type SettingsSubpage = "profil" | "pengguna" | "printer" | "akun" | "cadangan" | "lisensi" | "tentang";
 
 const TITLES: Readonly<Record<SettingsSubpage, string>> = {
   profil: "Profil konter",
   pengguna: "Owner & karyawan",
   printer: "Printer nota",
   akun: "Akun & PIN saya",
+  cadangan: "Cadangan & pindah HP",
   lisensi: "Lisensi",
   tentang: "Tentang aplikasi",
 };
@@ -49,6 +51,14 @@ const ICONS: Readonly<Record<SettingsSubpage, ReactNode>> = {
       <path d="M12 14.5v2.5" />
     </>
   ),
+  cadangan: (
+    <>
+      <ellipse cx="12" cy="5.5" rx="7.5" ry="2.5" />
+      <path d="M4.5 5.5v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-6" />
+      <path d="M4.5 11.5v6c0 1.4 3.4 2.5 7.5 2.5 1 0 2-.1 2.9-.2" />
+      <path d="m16.5 18.5 2 2 3.5-4" />
+    </>
+  ),
   lisensi: (
     <>
       <path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z" />
@@ -79,8 +89,9 @@ export function SettingsPage({
     const users = await ctx.auth.listActiveUsers();
     const printer = await ctx.printing.getSettings();
     const license = await ctx.license.status();
-    return { users, printer, license };
-  }, [ctx.auth, ctx.printing, ctx.license, ctx.dataVersion, page]);
+    const lastBackup = await ctx.backup.lastExportAtMs();
+    return { users, printer, license, lastBackup };
+  }, [ctx.auth, ctx.printing, ctx.license, ctx.backup, ctx.dataVersion, page]);
 
   if (page !== null) {
     return (
@@ -90,6 +101,14 @@ export function SettingsPage({
         {page === "pengguna" && <UsersSection ctx={ctx} />}
         {page === "printer" && <PrinterSettingsPanel ctx={ctx} />}
         {page === "akun" && <AccountSection ctx={ctx} />}
+        {page === "cadangan" && (
+          <BackupPanel
+            backup={ctx.backup}
+            files={ctx.files}
+            dataVersion={ctx.dataVersion}
+            onRestored={ctx.lock}
+          />
+        )}
         {page === "lisensi" && <LicenseSection ctx={ctx} />}
         {page === "tentang" && <AboutPanel />}
       </div>
@@ -110,6 +129,10 @@ export function SettingsPage({
           ? { text: "Belum diatur", warn: true }
           : { text: `${s.printer.printerName ?? "Printer"} · ${s.printer.paper} mm${s.printer.autoPrint ? " · cetak otomatis" : ""}` },
     akun: { text: `${ctx.user.name} · ${roleLabel(ctx.user.role)} · ganti PIN` },
+    cadangan:
+      s === null
+        ? { text: "…" }
+        : { text: `${backupAgeText(s.lastBackup)} · simpan ke Drive/WA`, warn: backupIsDue(s.lastBackup) },
     lisensi: s === null ? { text: "…" } : s.license.activated ? { text: `Aktif sejak ${s.license.activatedOn}` } : { text: "Belum aktif", warn: true },
     tentang: { text: `Versi ${APP_VERSION}` },
   };
@@ -117,7 +140,7 @@ export function SettingsPage({
   const groups: readonly { readonly label: string; readonly items: readonly SettingsSubpage[] }[] = [
     ...(isOwner ? [{ label: "Konter", items: ["profil", "pengguna", "printer"] as const }] : []),
     { label: "Akun", items: ["akun"] },
-    { label: "Data & aplikasi", items: ["lisensi", "tentang"] },
+    { label: "Data & aplikasi", items: isOwner ? ["cadangan", "lisensi", "tentang"] : ["lisensi", "tentang"] },
   ];
 
   return (
@@ -305,8 +328,12 @@ function StoreProfileForm({
           <input value={form.address} onChange={(e) => set("address")(e.target.value)} maxLength={120} />
         </label>
         <label className="span-2">
-          Catatan di bawah nota
-          <input value={form.footer} onChange={(e) => set("footer")(e.target.value)} placeholder="Garansi toko 7 hari (segel tidak rusak)" maxLength={160} />
+          Pesan di bawah semua nota
+          <input value={form.footer} onChange={(e) => set("footer")(e.target.value)} placeholder="Buka setiap hari 09.00–21.00 · IG @kontermaju" maxLength={160} />
+          <small className="muted">
+            Tampil di semua nota (jual HP, aksesoris, digital, dan service). Garansi service tidak diisi di sini, tapi per
+            service saat menandai perbaikan selesai.
+          </small>
         </label>
       </div>
       <ErrorText error={action.error} />

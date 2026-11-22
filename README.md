@@ -36,6 +36,13 @@ npm run build
   diisi nama dan modal. Nomor tujuan disimpan di baris nota.
 - **Pelunasan service** dicatat di Kasir (bagian Service) lengkap dengan
   metode bayar, lalu nota service bisa dikirim ke WA.
+- **Garansi service** dicatat per service saat menandai perbaikan selesai
+  (tanpa / 7 / 14 hari / 1 / 3 bulan / lainnya, plus ketentuan) dan masih bisa
+  diubah saat HP diserahkan. Masa garansi dihitung dari **tanggal HP diambil**
+  dan hanya dicetak di nota service itu. Service batal tidak bergaransi.
+  "Pesan di bawah semua nota" di Profil konter bukan tempat garansi.
+  Halaman Service punya **Cek garansi**, dan form service baru memberi
+  peringatan kalau IMEI-nya masih bergaransi.
 - Nama, harga jual, dan harga modal dibekukan di baris nota, jadi mengubah
   harga nanti tidak mengubah laporan lama.
 - Laporan memakai hari Asia/Jakarta (WIB). Nomor nota per hari:
@@ -50,7 +57,8 @@ npm run build
 - `src/domain`: aturan bisnis murni (tanpa database/DOM).
 - `src/data`: skema SQLite berversi, migrasi, dan `KonterRepository`.
   Tes memakai SQL.js, sedangkan Android memakai `@capacitor-community/sqlite`.
-- `src/application`: login PIN (Owner/karyawan) dan lisensi offline.
+- `src/application`: login PIN (Owner/karyawan), lisensi offline, printer,
+  laporan, dan cadangan (`backup.ts`).
 - `src/licensing`: format kode aktivasi `KKO1`. Kode Kasir Kaki Lima (`KKL1`)
   tidak berlaku di sini.
 - `src/printing`: struk thermal ESC/POS 58/80 mm + port printer Bluetooth
@@ -66,11 +74,46 @@ Karyawan boleh jualan, service, dan melihat stok. Harga modal, untung, HP
 masuk, tambah stok/harga aksesoris dan produk digital, pembatalan nota, dan pengaturan pengguna
 hanya untuk Owner.
 
+## Cadangan & pindah HP
+
+Data hanya ada di perangkat, jadi Owner perlu membuat cadangan
+(Pengaturan → **Cadangan & pindah HP**). Beranda mengingatkan kalau belum
+pernah atau sudah lebih dari 7 hari.
+
+- File `kasir-konter-cadangan-YYYY-MM-DD-HHMM.json` berisi semua tabel + checksum
+  SHA-256, lalu dibagikan lewat lembar Bagikan (Drive, WA, dan lainnya). Lisensi
+  tidak ikut.
+- **Pulihkan** dari Pengaturan, atau dari layar **Buat akun Owner** di HP baru
+  (setelah aktivasi). Pratinjau isi file tampil dulu, lalu Owner mencentang
+  persetujuan. Semua tabel diganti dalam **satu transaksi**: kalau file rusak,
+  terpotong, atau tidak cocok, data lama tetap utuh.
+- Cadangan dari versi aplikasi lama dinaikkan lewat migrasi skema yang sama.
+  Lisensi dan printer perangkat tujuan tidak tertimpa. Salinan data sebelum
+  dipulihkan disimpan di `files/cadangan/sebelum-pulihkan.json` (memori
+  aplikasi). Setelah pulihkan, aplikasi kembali ke layar PIN dan semua
+  pengguna masuk dengan PIN lama.
+
 ## Lisensi (Admin)
 
 Kunci rahasia ada di `%USERPROFILE%\Documents\KasirKonterAdmin\license-private-key.json`
 (di luar repo; cadangkan di dua tempat aman). Ubah lokasinya dengan
 `KKO_LICENSE_KEY_FILE`.
+
+Cara termudah: buka **`tools/license/admin.html`** (klik dua kali; berjalan
+offline di Chrome/Edge, sama seperti Admin Kasir Kaki Lima):
+
+1. Seret file kunci rahasia ke halaman. Kunci dicek cocok dengan kunci publik
+   aplikasi, hanya dibaca di browser, dan hilang saat halaman ditutup.
+2. Pilih **Aktivasi** atau **Reset PIN Owner**, lalu isi kode perangkat, nama,
+   dan No. WA.
+3. **Buat kode** → *Salin kode*, *Salin pesan WA*, atau *Buka WhatsApp*.
+4. Riwayat tersimpan di browser itu: bisa dicari, diekspor ke CSV, dan
+   dicadangkan/dipulihkan sebagai JSON. Ada peringatan kalau perangkat sudah
+   pernah diaktivasi.
+
+`admin.html` dibangun dari `admin.template.html` + `license-core.mjs` dengan
+`npm run admin:page` (tes gagal kalau lupa dibangun ulang). Jangan unggah
+halaman ini bersama kunci ke internet. Alternatif baris perintah:
 
 ```text
 node tools/license/admin.mjs aktivasi ABCDE-12345
@@ -123,6 +166,8 @@ APK uji: `android/app/build/outputs/apk/debug/app-debug.apk`, dengan ID
   Lima (uang diterima/kembalian), cetak nota Bluetooth, panduan Kasir Digital
   saat daftar kosong.
 
-Berikutnya:
-1. Cadangan/pindah HP (ekspor/impor file) dan pengingat backup.
-2. Halaman Admin di browser untuk membuat kode aktivasi.
+- Revisi Owner 4: menu bawah Beranda/Kasir/Service/Pengaturan, Pengaturan
+  gaya Kasir Kaki Lima, halaman Barang terlaris & Cara bayar, filter periode
+  lengkap di Riwayat nota.
+- Revisi Owner 5: cadangan & pindah HP, halaman Admin lisensi
+  (`tools/license/admin.html`), garansi per service (skema v5).

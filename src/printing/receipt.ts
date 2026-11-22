@@ -1,5 +1,6 @@
 import type { SaleRecord, ServiceOrder } from "../data/repository";
 import type { PaymentMethod } from "../domain/sales";
+import { warrantyLabel } from "../domain/service";
 import {
   charsPerLine,
   fit,
@@ -15,7 +16,7 @@ export interface ReceiptStore {
   readonly name: string;
   readonly address: string;
   readonly phone: string;
-  /** Mis. "Garansi toko 7 hari". */
+  /** Pesan umum di bawah semua nota, mis. jam buka. Garansi service dicatat per service. */
   readonly footer: string;
 }
 
@@ -161,8 +162,23 @@ export function buildServiceReceipt(input: {
     }
   }
   lines.push(divider);
+  if (done && order.warrantyDays > 0 && order.warrantyUntil !== null) {
+    lines.push({ text: `GARANSI ${warrantyLabel(order.warrantyDays).toUpperCase()}`, align: "center", bold: true });
+    lines.push({ text: `Berlaku s/d ${shortDay(order.warrantyUntil)}`, align: "center" });
+    if (order.warrantyNote) for (const part of wrap(order.warrantyNote, width)) lines.push({ text: part, align: "center" });
+    lines.push({ text: "Bawa nota ini saat klaim garansi.", align: "center" });
+    lines.push(divider);
+  }
   lines.push(...footer(input.store, width, done ? "Terima kasih!" : "Bawa struk ini saat mengambil HP."));
   return lines;
+}
+
+const SHORT_MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+
+/** "2026-11-30" -> "30 Nov 2026" (ASCII, aman untuk printer). */
+function shortDay(dayKey: string): string {
+  const [year, month, day] = dayKey.split("-").map(Number);
+  return `${day} ${SHORT_MONTHS[month! - 1]} ${year}`;
 }
 
 export function buildTestReceipt(store: ReceiptStore, paper: PaperWidth): readonly ReceiptLine[] {

@@ -5,6 +5,7 @@
  */
 import { createRoot } from "react-dom/client";
 import { AuthApplicationService } from "../application/auth";
+import { BackupService } from "../application/backup";
 import { LicenseApplicationService } from "../application/license";
 import { PrintingApplicationService } from "../application/printing";
 import { createConsolePrinterPort } from "../printing/printer-port";
@@ -25,7 +26,7 @@ async function seed(repo: KonterRepository, setClock: (ms: number) => void): Pro
       name: "Konter Maju Jaya",
       address: "Jl. Pahlawan No. 12",
       phone: "081234567890",
-      footer: "Garansi toko 7 hari (segel tidak rusak)",
+      footer: "Buka setiap hari 09.00-21.00 · IG @kontermajujaya",
     }),
   );
   const a15 = await repo.addPhone({ brand: "Samsung", model: "Galaxy A15", variant: "8/256", color: "Hitam", imei1: "352099001761481", condition: "baru", costRupiah: 2_600_000n, plannedPriceRupiah: 2_999_000n, sourceParty: "Sales Erafone" });
@@ -51,9 +52,9 @@ async function seed(repo: KonterRepository, setClock: (ms: number) => void): Pro
     customerPhone: "081298765432",
   });
   const lcd = await repo.createServiceOrder({ customerName: "Andi", customerPhone: "081311112222", device: "iPhone XR merah", complaint: "LCD pecah, touchscreen tidak respon", completeness: "Unit + SIM", unlockCode: "1379", estimateRupiah: 650_000n, depositRupiah: 100_000n });
-  await repo.finishService(lcd.id, { totalChargeRupiah: 600_000n, partsCostRupiah: 380_000n }, "LCD OEM Shopee + ongkir");
-  const battery = await repo.createServiceOrder({ customerName: "Rina", device: "Oppo A5 2020", complaint: "Baterai cepat habis", estimateRupiah: 200_000n });
-  await repo.finishService(battery.id, { totalChargeRupiah: 200_000n, partsCostRupiah: 95_000n });
+  await repo.finishService(lcd.id, { totalChargeRupiah: 600_000n, partsCostRupiah: 380_000n }, "LCD OEM Shopee + ongkir", { days: 30, note: "Garansi LCD; tidak berlaku jika jatuh, kena air, atau segel rusak" });
+  const battery = await repo.createServiceOrder({ customerName: "Rina", device: "Oppo A5 2020", imei: "356789012345674", complaint: "Baterai cepat habis", estimateRupiah: 200_000n });
+  await repo.finishService(battery.id, { totalChargeRupiah: 200_000n, partsCostRupiah: 95_000n }, null, { days: 14, note: "Garansi baterai" });
   await repo.pickUpService(battery.id);
   const pulsa10 = await repo.addDigitalProduct({ name: "Pulsa Telkomsel 10rb", category: "pulsa", costRupiah: 10_250n, priceRupiah: 12_000n });
   await repo.addDigitalProduct({ name: "Pulsa Indosat 25rb", category: "pulsa", costRupiah: 24_900n, priceRupiah: 27_000n });
@@ -139,6 +140,7 @@ async function start() {
     license: new LicenseApplicationService(repo, async () => "preview", LICENSE_PUBLIC_KEY),
     printing: new PrintingApplicationService(repo, createConsolePrinterPort()),
     files: createBrowserFileSharer(),
+    backup: new BackupService(repo, "Kasir Konter"),
     isBrowserDevelopment: false,
   };
   createRoot(document.getElementById("root")!).render(
