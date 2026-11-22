@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "kasir_konter";
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export type StoredValue = string | number | null;
 export type StoredRow = Record<string, StoredValue>;
@@ -118,4 +118,22 @@ export const SCHEMA_VERSION_1_STATEMENTS: readonly string[] = [
   `CREATE INDEX service_orders_status ON service_orders (status, received_at_ms)`,
   `CREATE INDEX service_orders_picked_up ON service_orders (picked_up_at_ms)`,
   `CREATE INDEX service_orders_imei ON service_orders (imei)`,
+];
+
+/** Skema versi 2: pengguna (Owner/karyawan) dan pengaturan (lisensi, profil toko). */
+export const SCHEMA_VERSION_2_STATEMENTS: readonly string[] = [
+  `CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`,
+  `CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK (role IN ('owner', 'staff')),
+    pin_hash TEXT NOT NULL,
+    pin_salt TEXT NOT NULL,
+    pin_iterations INTEGER NOT NULL CHECK (pin_iterations > 0),
+    created_at_ms INTEGER NOT NULL,
+    archived_at_ms INTEGER
+  )`,
 ];

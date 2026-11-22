@@ -1,0 +1,30 @@
+package id.co.jadicuan.kasirkonter;
+
+import android.os.Bundle;
+import android.webkit.WebView;
+import androidx.activity.OnBackPressedCallback;
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        // Tombol Back Android: tutup lembar/dialog di aplikasi lebih dulu
+        // (UI web memakai history.pushState), keluar aplikasi bila sudah di awal.
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                WebView webView = getBridge() == null ? null : getBridge().getWebView();
+                if (webView != null && webView.canGoBack()) {
+                    webView.goBack();
+                    return;
+                }
+                setEnabled(false);
+                getOnBackPressedDispatcher().onBackPressed();
+                setEnabled(true);
+            }
+        });
+    }
+}

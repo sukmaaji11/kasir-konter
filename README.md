@@ -42,14 +42,58 @@ npm run build
 - `src/domain`: aturan bisnis murni (tanpa database/DOM).
 - `src/data`: skema SQLite berversi, migrasi, dan `KonterRepository`.
   Tes memakai SQL.js, sedangkan Android memakai `@capacitor-community/sqlite`.
+- `src/application`: login PIN (Owner/karyawan) dan lisensi offline.
+- `src/licensing`: format kode aktivasi `KKO1`. Kode Kasir Kaki Lima (`KKL1`)
+  tidak berlaku di sini.
+- `src/ui`: layar Kasir, Stok HP, Service, Aksesoris, Untung, Pengaturan.
+
+## Hak akses
+
+Karyawan boleh jualan, service, dan melihat stok. Harga modal, untung, HP
+masuk, tambah stok/harga aksesoris, pembatalan nota, dan pengaturan pengguna
+hanya untuk Owner.
+
+## Lisensi (Admin)
+
+Kunci rahasia ada di `%USERPROFILE%\Documents\KasirKonterAdmin\license-private-key.json`
+(di luar repo; cadangkan di dua tempat aman). Ubah lokasinya dengan
+`KKO_LICENSE_KEY_FILE`.
+
+```text
+node tools/license/admin.mjs aktivasi ABCDE-12345
+node tools/license/admin.mjs reset ABCDE-12345
+```
+
+## Pratinjau di browser
+
+`npm run dev`, lalu buka `/preview.html?tab=kasir` (opsional `&role=staff`).
+Halaman ini berisi data contoh dan langsung masuk tanpa aktivasi. Hanya untuk
+pengembangan; tidak ikut build produksi.
+
+## Build Android (uji)
+
+PowerShell, dari root repo:
+
+```powershell
+$env:JAVA_HOME = "$env:USERPROFILE\.jdks\jdk-21.0.13+9"
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+npm run build
+npm run cap:sync
+Set-Location android
+.\gradlew.bat assembleDebug "-Dorg.gradle.java.installations.paths=$env:JAVA_HOME"
+```
+
+APK uji: `androidppuild\outputspk\debugpp-debug.apk`, dengan ID
+`id.co.jadicuan.kasirkonter.dev`, terpisah dari versi rilis.
 
 ## Status
 
-Tahap 1 (selesai): domain + database + laporan untung, dengan tes.
+- Tahap 1: domain, database, laporan untung.
+- Tahap 2: lisensi + PIN, semua layar utama, platform Android. Sudah jalan
+  di tablet SM-T225.
 
 Berikutnya:
-1. Lisensi/aktivasi kode (dari Kasir Kaki Lima, dengan kunci terpisah) dan
-   login PIN Owner/karyawan (sembunyikan untung dan PIN pelanggan dari karyawan).
-2. Layar: stok HP, kasir, service, laporan (tablet landscape + HP).
-3. Cadangan/pindah HP, cetak nota thermal dan bagikan ke WA.
-4. Platform Android (`npx cap add android`) dan uji di tablet.
+1. Cadangan/pindah HP (ekspor/impor file) dan pengingat backup.
+2. Cetak nota thermal Bluetooth (dari Kasir Kaki Lima).
+3. Ikon aplikasi dan splash Android sendiri (sekarang masih bawaan Capacitor).
+4. Halaman Admin di browser untuk membuat kode aktivasi.

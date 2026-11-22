@@ -7,7 +7,10 @@ export type DomainErrorCode =
   | "not_found"
   | "invalid_state"
   | "insufficient_stock"
-  | "invalid_period";
+  | "invalid_period"
+  | "invalid_name"
+  | "invalid_pin"
+  | "weak_pin";
 
 export class DomainError extends Error {
   constructor(

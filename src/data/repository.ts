@@ -1,3 +1,4 @@
+import type { StoredUser, UserRole } from "../domain/auth";
 import { DomainError } from "../domain/errors";
 import {
   assertNonNegativeRupiah,
@@ -789,6 +790,84 @@ export class KonterRepository {
         profitRupiah: price - cost,
       };
     });
+  }
+
+  /** Nota dalam periode, terbaru dulu (termasuk yang dibatalkan). */
+  async listSales(range: TimeRange): Promise<readonly SaleRecord[]> {
+    const rows = await this.database.query(
+      `SELECT id FROM sales WHERE sold_at_ms >= ? AND sold_at_ms < ?
+       ORDER BY sold_at_ms DESC`,
+      [range.startMs, range.endMs],
+    );
+    const sales: SaleRecord[] = [];
+    for (const row of rows) {
+      sales.push(await this.requireSale(readText(row, "id")));
+    }
+    return sales;
+  }
+
+  /** Service yang sudah diambil dalam periode, terbaru dulu. */
+  async listPickedUpServices(range: TimeRange): Promise<readonly ServiceOrder[]> {
+    const rows = await this.database.query(
+      `SELECT * FROM service_orders
+       WHERE status = 'diambil' AND picked_up_at_ms >= ? AND picked_up_at_ms < ?
+       ORDER BY picked_up_at_ms DESC`,
+      [range.startMs, range.endMs],
+    );
+    return rows.map(readService);
+  }
+
+  // ----- Pengguna & pengaturan -------------------------------------------
+
+  async getSetting(key: string): Promise<string | null> {
+    const rows = await this.database.query("SELECT value FROM settings WHERE key = ?", [key]);
+    return rows[0] === undefined ? null : readText(rows[0], "value");
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    await this.database.run(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT (key) DO UPDATE SET value = excluded.value`,
+      [key, value],
+    );
+  }
+
+  async listUsers(): Promise<readonly StoredUser[]> {
+    const rows = await this.database.query("SELECT * FROM users ORDER BY created_at_ms");
+    return rows.map((row) => ({
+      id: readText(row, "id"),
+      name: readText(row, "name"),
+      role: readText(row, "role") as UserRole,
+      createdAtMs: readNumber(row, "created_at_ms"),
+      archivedAtMs: readOptionalNumber(row, "archived_at_ms"),
+      pin: {
+        hash: readText(row, "pin_hash"),
+        salt: readText(row, "pin_salt"),
+        iterations: readNumber(row, "pin_iterations"),
+      },
+    }));
+  }
+
+  async saveUser(user: StoredUser): Promise<void> {
+    await this.database.run(
+      `INSERT INTO users
+        (id, name, role, pin_hash, pin_salt, pin_iterations, created_at_ms, archived_at_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (id) DO UPDATE SET
+         name = excluded.name, role = excluded.role, pin_hash = excluded.pin_hash,
+         pin_salt = excluded.pin_salt, pin_iterations = excluded.pin_iterations,
+         archived_at_ms = excluded.archived_at_ms`,
+      [
+        user.id,
+        user.name,
+        user.role,
+        user.pin.hash,
+        user.pin.salt,
+        user.pin.iterations,
+        user.createdAtMs,
+        user.archivedAtMs,
+      ],
+    );
   }
 
   // ----- Internal ---------------------------------------------------------
