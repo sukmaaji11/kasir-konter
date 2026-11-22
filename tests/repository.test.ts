@@ -368,3 +368,43 @@ describe("laporan", () => {
     expect((await repo.monthProfit("2026-12")).total.count).toBe(0n);
   });
 });
+
+describe("foto produk", () => {
+  const jpeg = (tag: string) => ({
+    thumbDataUrl: `data:image/jpeg;base64,thumb-${tag}`,
+    fullDataUrl: `data:image/jpeg;base64,full-${tag}`,
+  });
+
+  it("HP boleh sampai 5 foto berurutan; thumbnail sampul = foto pertama", async () => {
+    const unit = await repo.addPhone(phone());
+    const owner = { type: "phone" as const, id: unit.id };
+    for (const tag of ["a", "b", "c", "d", "e"]) {
+      await repo.addPhoto(owner, jpeg(tag));
+    }
+    await expect(repo.addPhoto(owner, jpeg("f"))).rejects.toThrow("Maksimal 5 foto");
+    const photos = await repo.listPhotos(owner);
+    expect(photos.map((photo) => photo.fullDataUrl.slice(-1))).toEqual(["a", "b", "c", "d", "e"]);
+
+    await repo.deletePhoto(photos[0]!.id);
+    expect((await repo.coverThumbnails("phone")).get(unit.id)).toBe("data:image/jpeg;base64,thumb-b");
+    await repo.addPhoto(owner, jpeg("f"));
+    expect((await repo.listPhotos(owner)).at(-1)?.fullDataUrl).toBe("data:image/jpeg;base64,full-f");
+  });
+
+  it("aksesoris satu foto: foto baru menggantikan yang lama", async () => {
+    const item = await repo.addAccessory({ name: "Casing", costRupiah: 10_000n, priceRupiah: 35_000n });
+    const owner = { type: "accessory" as const, id: item.id };
+    await repo.addPhoto(owner, jpeg("lama"));
+    await repo.addPhoto(owner, jpeg("baru"));
+    const photos = await repo.listPhotos(owner);
+    expect(photos).toHaveLength(1);
+    expect(photos[0]?.thumbDataUrl).toBe("data:image/jpeg;base64,thumb-baru");
+  });
+
+  it("menolak format selain JPEG", async () => {
+    const unit = await repo.addPhone(phone());
+    await expect(
+      repo.addPhoto({ type: "phone", id: unit.id }, { thumbDataUrl: "data:image/png;base64,x", fullDataUrl: "data:image/png;base64,x" }),
+    ).rejects.toThrow("Format foto");
+  });
+});

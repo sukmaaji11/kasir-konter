@@ -200,6 +200,31 @@ export interface DailyProfit {
   readonly totals: ProfitTotals;
 }
 
+export interface PhotoOwner {
+  readonly type: "phone" | "accessory";
+  readonly id: string;
+}
+
+export interface PhotoInput {
+  /** JPEG kecil untuk daftar (data URL). */
+  readonly thumbDataUrl: string;
+  /** JPEG ukuran tampilan penuh (data URL). */
+  readonly fullDataUrl: string;
+}
+
+export interface ProductPhoto extends PhotoInput {
+  readonly id: string;
+}
+
+export const MAX_PHOTOS: Readonly<Record<PhotoOwner["type"], number>> = {
+  phone: 5,
+  accessory: 1,
+};
+
+function isJpegDataUrl(value: string): boolean {
+  return value.startsWith("data:image/jpeg;base64,") && value.length < 400_000;
+}
+
 export interface RepositoryOptions {
   readonly now?: () => number;
   readonly newId?: () => string;
@@ -815,6 +840,81 @@ export class KonterRepository {
       [range.startMs, range.endMs],
     );
     return rows.map(readService);
+  }
+
+  // ----- Foto produk -----------------------------------------------------
+
+  /** Menambah foto di urutan terakhir. HP maks. 5 foto, aksesoris 1 (foto lama diganti). */
+  async addPhoto(owner: PhotoOwner, photo: PhotoInput): Promise<ProductPhoto> {
+    if (!isJpegDataUrl(photo.thumbDataUrl) || !isJpegDataUrl(photo.fullDataUrl)) {
+      throw new DomainError("invalid_state", "Format foto tidak dikenali.");
+    }
+    const id = this.newId();
+    await inTransaction(this.database, async () => {
+      if (owner.type === "phone") {
+        await this.requirePhone(owner.id);
+      } else {
+        await this.requireAccessory(owner.id);
+        await this.database.run("DELETE FROM photos WHERE owner_type = 'accessory' AND owner_id = ?", [
+          owner.id,
+        ]);
+      }
+      const rows = await this.database.query(
+        `SELECT COUNT(*) AS total, COALESCE(MAX(position), -1) AS last FROM photos
+         WHERE owner_type = ? AND owner_id = ?`,
+        [owner.type, owner.id],
+      );
+      const total = readNumber(rows[0] ?? {}, "total");
+      if (total >= MAX_PHOTOS[owner.type]) {
+        throw new DomainError("invalid_quantity", `Maksimal ${MAX_PHOTOS[owner.type]} foto.`);
+      }
+      await this.database.run(
+        `INSERT INTO photos
+          (id, owner_type, owner_id, position, thumb_data_url, full_data_url, created_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          owner.type,
+          owner.id,
+          readNumber(rows[0] ?? {}, "last") + 1,
+          photo.thumbDataUrl,
+          photo.fullDataUrl,
+          this.now(),
+        ],
+      );
+    });
+    const photos = await this.listPhotos(owner);
+    return photos.find((item) => item.id === id)!;
+  }
+
+  async deletePhoto(photoId: string): Promise<void> {
+    await this.database.run("DELETE FROM photos WHERE id = ?", [photoId]);
+  }
+
+  /** Semua foto (ukuran penuh) milik satu produk, urut. */
+  async listPhotos(owner: PhotoOwner): Promise<readonly ProductPhoto[]> {
+    const rows = await this.database.query(
+      `SELECT id, thumb_data_url, full_data_url FROM photos
+       WHERE owner_type = ? AND owner_id = ? ORDER BY position`,
+      [owner.type, owner.id],
+    );
+    return rows.map((row) => ({
+      id: readText(row, "id"),
+      thumbDataUrl: readText(row, "thumb_data_url"),
+      fullDataUrl: readText(row, "full_data_url"),
+    }));
+  }
+
+  /** Thumbnail foto pertama untuk setiap produk yang punya foto. */
+  async coverThumbnails(type: PhotoOwner["type"]): Promise<ReadonlyMap<string, string>> {
+    const rows = await this.database.query(
+      `SELECT p.owner_id, p.thumb_data_url FROM photos p
+       JOIN (SELECT owner_id, MIN(position) AS first FROM photos WHERE owner_type = ? GROUP BY owner_id) f
+         ON f.owner_id = p.owner_id AND f.first = p.position
+       WHERE p.owner_type = ?`,
+      [type, type],
+    );
+    return new Map(rows.map((row) => [readText(row, "owner_id"), readText(row, "thumb_data_url")]));
   }
 
   // ----- Pengguna & pengaturan -------------------------------------------

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Accessory } from "../data/repository";
+import { PhotoStrip, ProductThumb, type StripPhoto } from "./PhotoStrip";
 import { can } from "../domain/auth";
 import { CurrencyInput } from "./CurrencyInput";
 import { EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
@@ -12,6 +13,7 @@ export function AccessoriesPage({ ctx }: { readonly ctx: PageContext }) {
   const manage = can(ctx.user, "manageAccessories");
   const showCost = can(ctx.user, "viewCostAndProfit");
   const items = useLoad(() => ctx.repo.listAccessories(), [ctx.repo, ctx.dataVersion]);
+  const thumbs = useLoad(() => ctx.repo.coverThumbnails("accessory"), [ctx.repo, ctx.dataVersion]);
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<Accessory | null>(null);
@@ -64,6 +66,7 @@ export function AccessoriesPage({ ctx }: { readonly ctx: PageContext }) {
                 onClick={() => setSelected(item)}
                 disabled={!manage}
               >
+                <ProductThumb src={thumbs.data?.get(item.id)} kind="aksesoris" />
                 <span className="list-card-main">
                   <strong>{item.name}</strong>
                   <span className={item.stockQuantity <= LOW_STOCK ? "warn-text" : "muted"}>
@@ -116,11 +119,18 @@ function NewAccessorySheet({
   readonly onSaved: () => void;
 }) {
   const [form, setForm] = useState({ name: "", category: "", cost: "", price: "", stock: "" });
+  const [photos, setPhotos] = useState<readonly StripPhoto[]>([]);
   const action = useAction();
   const set = (key: keyof typeof form) => (value: string) => setForm({ ...form, [key]: value });
 
   return (
     <Sheet title="Aksesoris baru" onClose={onClose}>
+      <PhotoStrip
+        photos={photos}
+        max={1}
+        onAdd={async (photo) => setPhotos([{ ...photo, key: `new-${Date.now()}` }])}
+        onRemove={async () => setPhotos([])}
+      />
       <div className="form-grid two">
         <label className="span-2">
           Nama *
@@ -162,13 +172,16 @@ function NewAccessorySheet({
             const cost = digitsToRupiah(form.cost);
             const price = digitsToRupiah(form.price);
             if (cost === null || price === null) throw new Error("Isi harga modal dan harga jual.");
-            await ctx.repo.addAccessory({
+            const created = await ctx.repo.addAccessory({
               name: form.name,
               category: form.category,
               costRupiah: cost,
               priceRupiah: price,
               initialStock: BigInt(form.stock || "0"),
             });
+            for (const photo of photos) {
+              await ctx.repo.addPhoto({ type: "accessory", id: created.id }, photo);
+            }
             onSaved();
           })
         }
@@ -195,9 +208,25 @@ function AccessorySheet({
   const [supplier, setSupplier] = useState("");
   const [price, setPrice] = useState(item.priceRupiah.toString());
   const action = useAction();
+  const owner = { type: "accessory" as const, id: item.id };
+  const photos = useLoad(() => ctx.repo.listPhotos(owner), [ctx.repo, item.id]);
 
   return (
     <Sheet title={item.name} onClose={onClose}>
+      <PhotoStrip
+        photos={(photos.data ?? []).map((photo) => ({ ...photo, key: photo.id }))}
+        max={1}
+        onAdd={async (photo) => {
+          await ctx.repo.addPhoto(owner, photo);
+          photos.reload();
+          ctx.changed();
+        }}
+        onRemove={async (id) => {
+          await ctx.repo.deletePhoto(id);
+          photos.reload();
+          ctx.changed();
+        }}
+      />
       <dl className="detail-list">
         <div><dt>Stok</dt><dd>{item.stockQuantity.toString()}</dd></div>
         <div><dt>Harga modal</dt><dd>{rp(item.costRupiah)}</dd></div>

@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "kasir_konter";
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type StoredValue = string | number | null;
 export type StoredRow = Record<string, StoredValue>;
@@ -136,4 +136,22 @@ export const SCHEMA_VERSION_2_STATEMENTS: readonly string[] = [
     created_at_ms INTEGER NOT NULL,
     archived_at_ms INTEGER
   )`,
+];
+
+/**
+ * Skema versi 3: foto produk. Disimpan terpisah dari tabel produk supaya
+ * daftar stok cukup memuat thumbnail kecil, bukan foto penuh.
+ * HP boleh beberapa foto (urut `position`), aksesoris satu foto.
+ */
+export const SCHEMA_VERSION_3_STATEMENTS: readonly string[] = [
+  `CREATE TABLE photos (
+    id TEXT PRIMARY KEY,
+    owner_type TEXT NOT NULL CHECK (owner_type IN ('phone', 'accessory')),
+    owner_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    thumb_data_url TEXT NOT NULL,
+    full_data_url TEXT NOT NULL,
+    created_at_ms INTEGER NOT NULL
+  )`,
+  `CREATE INDEX photos_owner ON photos (owner_type, owner_id, position)`,
 ];

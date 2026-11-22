@@ -55,11 +55,45 @@ async function seed(repo: KonterRepository, setClock: (ms: number) => void): Pro
   setClock(now - HOUR);
   await repo.createServiceOrder({ customerName: "Dodi", customerPhone: "085712345678", device: "Redmi Note 9", complaint: "Mati total setelah jatuh ke air" });
   setClock(now);
+
+  // Foto contoh (digambar di canvas) supaya tampilan kotak produk terlihat nyata.
+  const phones = await repo.listPhonesInStock();
+  const colors = ["#2f6db5", "#c0392b", "#16a085", "#8e44ad", "#d68910"];
+  for (const [index, unit] of phones.entries()) {
+    if (index === 1) continue; // satu HP tanpa foto: menampilkan ikon pengganti
+    for (let shot = 0; shot < (index === 0 ? 3 : 1); shot += 1) {
+      await repo.addPhoto({ type: "phone", id: unit.id }, samplePhoto(colors[(index + shot) % colors.length]!, unit.model));
+    }
+  }
+  const accessories = await repo.listAccessories();
+  for (const [index, item] of accessories.entries()) {
+    if (index % 2 === 0) await repo.addPhoto({ type: "accessory", id: item.id }, samplePhoto("#5d6d7e", item.category ?? "Aksesoris"));
+  }
+}
+
+function samplePhoto(color: string, label: string) {
+  const draw = (size: number) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = size;
+    const c = canvas.getContext("2d")!;
+    c.fillStyle = "#f1f3f6";
+    c.fillRect(0, 0, size, size);
+    c.fillStyle = color;
+    c.beginPath();
+    c.roundRect(size * 0.3, size * 0.12, size * 0.4, size * 0.76, size * 0.06);
+    c.fill();
+    c.fillStyle = "rgba(255,255,255,0.85)";
+    c.font = `bold ${Math.round(size * 0.07)}px sans-serif`;
+    c.textAlign = "center";
+    c.fillText(label.slice(0, 12), size / 2, size * 0.52);
+    return canvas.toDataURL("image/jpeg", 0.8);
+  };
+  return { thumbDataUrl: draw(200), fullDataUrl: draw(600) };
 }
 
 async function start() {
   const params = new URLSearchParams(location.search);
-  const tab = (params.get("tab") ?? "kasir") as Tab;
+  const tab = (params.get("tab") ?? "beranda") as Tab;
   // Jam bisa dimundurkan saat mengisi data contoh, lalu kembali ke jam asli.
   let fakeClock: number | null = null;
   const opened = await openBrowserDevRepository({ now: () => fakeClock ?? Date.now() });

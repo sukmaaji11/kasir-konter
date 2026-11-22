@@ -1,30 +1,24 @@
 import { useState } from "react";
-import type { SaleRecord } from "../data/repository";
-import { can } from "../domain/auth";
 import { BUSINESS_LINE_LABELS, BUSINESS_LINES } from "../domain/report";
 import { jakartaDayRange, jakartaMonthRange } from "../domain/time";
-import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
+import { Chips, EmptyState, ErrorText, useLoad } from "./common";
 import type { PageContext } from "./context";
-import { dateTimeWib, dayLabel, monthLabel, rp, rpSigned, thisMonthKey, todayKey } from "./format";
-import { ReceiptSheet } from "./SalePage";
+import { dayLabel, monthLabel, rp, rpSigned, thisMonthKey, todayKey } from "./format";
 
 type Mode = "hari" | "bulan";
-type Detail = "hp" | "nota" | "service";
+type Detail = "hp" | "service";
 
 export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
   const [mode, setMode] = useState<Mode>("hari");
   const [day, setDay] = useState(todayKey());
   const [month, setMonth] = useState(thisMonthKey());
   const [detail, setDetail] = useState<Detail>("hp");
-  const [openSale, setOpenSale] = useState<SaleRecord | null>(null);
-  const [voiding, setVoiding] = useState<SaleRecord | null>(null);
 
   const report = useLoad(async () => {
     const range = mode === "hari" ? jakartaDayRange(day) : jakartaMonthRange(month);
     return {
       summary: await ctx.repo.profitSummary(range),
       phones: await ctx.repo.phoneProfits(range),
-      sales: await ctx.repo.listSales(range),
       services: await ctx.repo.listPickedUpServices(range),
       daily: mode === "bulan" ? await ctx.repo.dailyProfit(month) : null,
     };
@@ -119,7 +113,6 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
               label="Rincian"
               options={[
                 { value: "hp", label: `Untung per HP (${data.phones.length})` },
-                { value: "nota", label: `Nota (${data.sales.length})` },
                 { value: "service", label: `Service diambil (${data.services.length})` },
               ]}
             />
@@ -153,38 +146,6 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
                     ))}
                   </tbody>
                 </table>
-              ))}
-            {detail === "nota" &&
-              (data.sales.length === 0 ? (
-                <EmptyState>Belum ada nota di periode ini.</EmptyState>
-              ) : (
-                <ul className="card-list">
-                  {data.sales.map((sale) => (
-                    <li key={sale.id}>
-                      <div className={sale.voidedAtMs !== null ? "list-card static voided" : "list-card static"}>
-                        <button type="button" className="list-card-main link-like" onClick={() => setOpenSale(sale)}>
-                          <strong>
-                            {sale.number}
-                            {sale.customerName ? ` · ${sale.customerName}` : ""}
-                          </strong>
-                          <span className="muted">
-                            {dateTimeWib(sale.soldAtMs)} · {sale.lines.map((line) => line.name.replace(/ \(IMEI.*\)$/, "")).join(", ")}
-                          </span>
-                          {sale.voidedAtMs !== null && <span className="badge badge-red">Dibatalkan: {sale.voidReason}</span>}
-                        </button>
-                        <span className="list-card-side">
-                          <strong>{rp(sale.summary.itemsTotalRupiah)}</strong>
-                          <span className="muted">untung {rpSigned(sale.summary.profitRupiah)}</span>
-                          {sale.voidedAtMs === null && can(ctx.user, "voidSale") && (
-                            <button type="button" className="text-button danger" onClick={() => setVoiding(sale)}>
-                              Batalkan
-                            </button>
-                          )}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
               ))}
             {detail === "service" &&
               (data.services.length === 0 ? (
@@ -222,64 +183,6 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
         </>
       )}
 
-      {openSale !== null && <ReceiptSheet ctx={ctx} sale={openSale} onClose={() => setOpenSale(null)} />}
-      {voiding !== null && (
-        <VoidSaleSheet
-          ctx={ctx}
-          sale={voiding}
-          onClose={() => setVoiding(null)}
-          onDone={() => {
-            setVoiding(null);
-            ctx.changed();
-          }}
-        />
-      )}
     </div>
-  );
-}
-
-function VoidSaleSheet({
-  ctx,
-  sale,
-  onClose,
-  onDone,
-}: {
-  readonly ctx: PageContext;
-  readonly sale: SaleRecord;
-  readonly onClose: () => void;
-  readonly onDone: () => void;
-}) {
-  const [reason, setReason] = useState("");
-  const action = useAction();
-  return (
-    <Sheet title={`Batalkan ${sale.number}?`} onClose={onClose}>
-      <p>
-        HP di nota ini kembali ke stok dan stok aksesoris dikembalikan.
-        {sale.tradeInPhone !== null && " HP tukar tambahnya dikeluarkan dari stok."} Untung nota ini hilang dari laporan.
-      </p>
-      <label className="block-label">
-        Alasan *
-        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Salah input harga / pelanggan batal" autoFocus />
-      </label>
-      <ErrorText error={action.error} />
-      <div className="button-row">
-        <button
-          type="button"
-          className="button button-danger"
-          disabled={action.busy}
-          onClick={() =>
-            void action.run(async () => {
-              await ctx.repo.voidSale(sale.id, reason);
-              onDone();
-            })
-          }
-        >
-          Ya, batalkan nota
-        </button>
-        <button type="button" className="button button-quiet" onClick={onClose}>
-          Tidak
-        </button>
-      </div>
-    </Sheet>
   );
 }

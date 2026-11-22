@@ -1,11 +1,12 @@
 import { useState } from "react";
-import type { PhoneUnit } from "../data/repository";
+import { MAX_PHOTOS, type PhoneUnit, type PhotoInput } from "../data/repository";
 import { can } from "../domain/auth";
 import { isImeiChecksumValid, type PhoneCondition, type PhoneSource } from "../domain/phones";
 import { CurrencyInput } from "./CurrencyInput";
 import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
 import { ageLabel, dateTimeWib, digitsToRupiah, rp } from "./format";
+import { PhotoStrip, ProductThumb, type StripPhoto } from "./PhotoStrip";
 
 const SOURCE_LABELS: Readonly<Record<PhoneSource, string>> = {
   supplier: "Kulakan",
@@ -18,6 +19,7 @@ const STATUS_LABELS = { stok: "Di stok", terjual: "Terjual", dibatalkan: "Dibata
 export function PhonesPage({ ctx }: { readonly ctx: PageContext }) {
   const showCost = can(ctx.user, "viewCostAndProfit");
   const phones = useLoad(() => ctx.repo.listPhonesInStock(), [ctx.repo, ctx.dataVersion]);
+  const thumbs = useLoad(() => ctx.repo.coverThumbnails("phone"), [ctx.repo, ctx.dataVersion]);
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState(false);
   const [selected, setSelected] = useState<PhoneUnit | null>(null);
@@ -74,6 +76,7 @@ export function PhonesPage({ ctx }: { readonly ctx: PageContext }) {
           {list.map((phone) => (
             <li key={phone.id}>
               <button type="button" className="list-card" onClick={() => setSelected(phone)}>
+                <ProductThumb src={thumbs.data?.get(phone.id)} kind="hp" />
                 <span className="list-card-main">
                   <strong>{phone.displayName}</strong>
                   <span className="muted">IMEI {phone.imei1}</span>
@@ -141,6 +144,7 @@ function PhoneIntakeSheet({
     party: "",
     note: "",
   });
+  const [photos, setPhotos] = useState<readonly StripPhoto[]>([]);
   const action = useAction();
   const set = (key: keyof typeof form) => (value: string) => setForm({ ...form, [key]: value });
   const imeiDigits = form.imei1.replace(/[\s-]/g, "");
@@ -153,7 +157,7 @@ function PhoneIntakeSheet({
     await action.run(async () => {
       const cost = digitsToRupiah(form.cost);
       if (cost === null) throw new Error("Harga modal wajib diisi.");
-      await ctx.repo.addPhone(
+      const unit = await ctx.repo.addPhone(
         {
           brand: form.brand,
           model: form.model,
@@ -170,12 +174,24 @@ function PhoneIntakeSheet({
         },
         source,
       );
+      for (const photo of photos) {
+        await ctx.repo.addPhoto({ type: "phone", id: unit.id }, photo);
+      }
       onSaved();
     });
   }
 
   return (
     <Sheet title="HP masuk" onClose={onClose} wide>
+      <PhotoStrip
+        label="Foto HP"
+        photos={photos}
+        max={MAX_PHOTOS.phone}
+        onAdd={async (photo: PhotoInput) => {
+          setPhotos((current) => [...current, { ...photo, key: `new-${Date.now()}-${current.length}` }]);
+        }}
+        onRemove={async (key) => setPhotos((current) => current.filter((item) => item.key !== key))}
+      />
       <Chips
         value={source}
         onChange={(value) => {
@@ -270,9 +286,25 @@ function PhoneDetailSheet({
   const [confirming, setConfirming] = useState(false);
   const action = useAction();
   const cancellable = can(ctx.user, "addPhone") && phone.status === "stok" && phone.source !== "tukar_tambah";
+  const owner = { type: "phone" as const, id: phone.id };
+  const photos = useLoad(() => ctx.repo.listPhotos(owner), [ctx.repo, phone.id, ctx.dataVersion]);
 
   return (
     <Sheet title={phone.displayName} onClose={onClose}>
+      <PhotoStrip
+        label="Foto HP"
+        photos={(photos.data ?? []).map((photo) => ({ ...photo, key: photo.id }))}
+        max={MAX_PHOTOS.phone}
+        readOnly={!can(ctx.user, "addPhone")}
+        onAdd={async (photo) => {
+          await ctx.repo.addPhoto(owner, photo);
+          ctx.changed();
+        }}
+        onRemove={async (id) => {
+          await ctx.repo.deletePhoto(id);
+          ctx.changed();
+        }}
+      />
       <dl className="detail-list">
         <div><dt>IMEI 1</dt><dd>{phone.imei1}</dd></div>
         {phone.imei2 !== null && <div><dt>IMEI 2</dt><dd>{phone.imei2}</dd></div>}

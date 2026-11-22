@@ -16,6 +16,9 @@ import { loadStoreProfile, type StoreProfile } from "./receipts";
 import { ReportPage } from "./ReportPage";
 import { SalePage } from "./SalePage";
 import { ServicePage } from "./ServicePage";
+import { HomePage } from "./HomePage";
+import { SalesHistoryPage } from "./SalesHistoryPage";
+import { useAndroidBack } from "./useAndroidBack";
 import { SettingsPage } from "./SettingsPage";
 import "./styles.css";
 
@@ -26,16 +29,38 @@ export interface Runtime {
   readonly isBrowserDevelopment: boolean;
 }
 
-export type Tab ="kasir" | "hp" | "service" | "aksesoris" | "laporan" | "pengaturan";
+export type Tab =
+  | "beranda"
+  | "kasir"
+  | "service"
+  | "laporan"
+  | "hp"
+  | "aksesoris"
+  | "nota"
+  | "pengaturan";
 
-const TABS: readonly { readonly id: Tab; readonly label: string; readonly icon: string }[] = [
-  { id: "kasir", label: "Kasir", icon: "🧾" },
-  { id: "hp", label: "Stok HP", icon: "📱" },
-  { id: "service", label: "Service", icon: "🔧" },
-  { id: "aksesoris", label: "Aksesoris", icon: "🎧" },
-  { id: "laporan", label: "Untung", icon: "📊" },
-  { id: "pengaturan", label: "Pengaturan", icon: "⚙️" },
-];
+/** Menu bawah. Halaman lain dibuka dari kotak menu di Beranda. */
+function bottomTabs(user: AppUser): readonly { readonly id: Tab; readonly label: string; readonly icon: string }[] {
+  return [
+    { id: "beranda", label: "Beranda", icon: "🏠" },
+    { id: "kasir", label: "Kasir", icon: "🧾" },
+    { id: "service", label: "Service", icon: "🔧" },
+    can(user, "viewCostAndProfit")
+      ? { id: "laporan", label: "Laporan", icon: "📊" }
+      : { id: "hp", label: "Stok HP", icon: "📱" },
+  ];
+}
+
+const PAGE_TITLES: Readonly<Record<Tab, string>> = {
+  beranda: "Beranda",
+  kasir: "Kasir",
+  service: "Service",
+  laporan: "Laporan untung",
+  hp: "Stok HP",
+  aksesoris: "Aksesoris",
+  nota: "Riwayat nota",
+  pengaturan: "Pengaturan",
+};
 
 export function App() {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
@@ -59,7 +84,7 @@ export function MainApp({
   runtime,
   user,
   lock,
-  initialTab = "kasir",
+  initialTab = "beranda",
 }: {
   readonly runtime: Runtime;
   readonly user: AppUser;
@@ -69,10 +94,19 @@ export function MainApp({
   const [tab, setTab] = useState<Tab>(initialTab);
   const [dataVersion, setDataVersion] = useState(0);
   const [store, setStore] = useState<StoreProfile | null>(null);
+  const tabs = bottomTabs(user);
+  const isSubpage = !tabs.some((item) => item.id === tab);
+
+  // Tombol Back Android di halaman dari menu Beranda: kembali ke Beranda.
+  useAndroidBack(isSubpage, () => setTab("beranda"));
 
   useEffect(() => {
     void loadStoreProfile((key) => runtime.repo.getSetting(key)).then(setStore);
   }, [runtime.repo]);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab]);
 
   if (store === null) return <SplashScreen animate={false} />;
 
@@ -85,50 +119,63 @@ export function MainApp({
     dataVersion,
     changed: () => setDataVersion((value) => value + 1),
     lock,
+    open: setTab,
   };
-  const tabs = TABS.filter((item) => item.id !== "laporan" || can(user, "viewCostAndProfit"));
 
   return (
     <div className="app-frame">
       <header className="app-bar">
         <div className="app-bar-inner">
-          <BrandLogo size={40} />
-          <div className="app-bar-title">
-            <div className="brand-name">{store.name.trim() || "Kasir Konter"}</div>
-            <div className="brand-caption">
-              {user.name} · {roleLabel(user.role)}
-            </div>
-          </div>
+          {isSubpage ? (
+            <>
+              <button type="button" className="back-button" onClick={() => setTab("beranda")} aria-label="Kembali ke Beranda">
+                ←
+              </button>
+              <h1 className="app-bar-heading">{PAGE_TITLES[tab]}</h1>
+            </>
+          ) : (
+            <>
+              <BrandLogo size={30} />
+              <div className="app-bar-title">
+                <div className="brand-name">{store.name.trim() || "Kasir Konter"}</div>
+                <div className="brand-caption">
+                  {user.name} · {roleLabel(user.role)}
+                </div>
+              </div>
+            </>
+          )}
           <button type="button" className="lock-button" onClick={lock} aria-label="Kunci aplikasi">
             🔒
           </button>
         </div>
-        <nav className="tab-bar" aria-label="Menu utama">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={item.id === tab ? "tab tab-active" : "tab"}
-              aria-current={item.id === tab ? "page" : undefined}
-              onClick={() => setTab(item.id)}
-            >
-              <span aria-hidden="true">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
       </header>
       {runtime.isBrowserDevelopment && (
         <p className="dev-banner">Mode pengembangan: data hanya di memori dan hilang saat halaman dimuat ulang.</p>
       )}
       <main className="app-content">
+        {tab === "beranda" && <HomePage ctx={ctx} />}
         {tab === "kasir" && <SalePage ctx={ctx} />}
         {tab === "hp" && <PhonesPage ctx={ctx} />}
         {tab === "service" && <ServicePage ctx={ctx} />}
         {tab === "aksesoris" && <AccessoriesPage ctx={ctx} />}
+        {tab === "nota" && <SalesHistoryPage ctx={ctx} />}
         {tab === "laporan" && can(user, "viewCostAndProfit") && <ReportPage ctx={ctx} />}
         {tab === "pengaturan" && <SettingsPage ctx={ctx} onStoreSaved={setStore} />}
       </main>
+      <nav className="bottom-nav" aria-label="Menu utama">
+        {tabs.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={item.id === tab ? "nav-item active" : "nav-item"}
+            aria-current={item.id === tab ? "page" : undefined}
+            onClick={() => setTab(item.id)}
+          >
+            <span aria-hidden="true">{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
