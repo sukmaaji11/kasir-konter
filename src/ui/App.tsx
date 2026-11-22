@@ -18,7 +18,9 @@ import { loadStoreProfile, type StoreProfile } from "./receipts";
 import { ReportPage } from "./ReportPage";
 import { SalePage } from "./SalePage";
 import { ServicePage } from "./ServicePage";
+import { BestSellersPage } from "./BestSellersPage";
 import { DigitalPage } from "./DigitalPage";
+import { PaymentsPage } from "./PaymentsPage";
 import { HomePage } from "./HomePage";
 import { SalesHistoryPage } from "./SalesHistoryPage";
 import { useAndroidBack } from "./useAndroidBack";
@@ -43,19 +45,17 @@ export type Tab =
   | "aksesoris"
   | "digital"
   | "nota"
+  | "terlaris"
+  | "bayar"
   | "pengaturan";
 
 /** Menu bawah. Halaman lain dibuka dari kotak menu di Beranda. */
-function bottomTabs(user: AppUser): readonly { readonly id: Tab; readonly label: string; readonly icon: string }[] {
-  return [
-    { id: "beranda", label: "Beranda", icon: "🏠" },
-    { id: "kasir", label: "Kasir", icon: "🧾" },
-    { id: "service", label: "Service", icon: "🔧" },
-    can(user, "viewCostAndProfit")
-      ? { id: "laporan", label: "Laporan", icon: "📊" }
-      : { id: "hp", label: "Stok HP", icon: "📱" },
-  ];
-}
+const BOTTOM_TABS: readonly { readonly id: Tab; readonly label: string; readonly icon: string }[] = [
+  { id: "beranda", label: "Beranda", icon: "🏠" },
+  { id: "kasir", label: "Kasir", icon: "🧾" },
+  { id: "service", label: "Service", icon: "🔧" },
+  { id: "pengaturan", label: "Pengaturan", icon: "⚙️" },
+];
 
 const PAGE_TITLES: Readonly<Record<Tab, string>> = {
   beranda: "Beranda",
@@ -66,6 +66,8 @@ const PAGE_TITLES: Readonly<Record<Tab, string>> = {
   aksesoris: "Aksesoris",
   digital: "Produk digital",
   nota: "Riwayat nota",
+  terlaris: "Barang terlaris",
+  bayar: "Cara bayar",
   pengaturan: "Pengaturan",
 };
 
@@ -102,7 +104,7 @@ export function MainApp({
   const [tab, setTab] = useState<Tab>(initialTab);
   const [dataVersion, setDataVersion] = useState(0);
   const [store, setStore] = useState<StoreProfile | null>(null);
-  const tabs = bottomTabs(user);
+  const tabs = BOTTOM_TABS;
   const isSubpage = !tabs.some((item) => item.id === tab);
 
   // Tombol Back Android di halaman dari menu Beranda: kembali ke Beranda.
@@ -171,6 +173,8 @@ export function MainApp({
         {tab === "digital" && <DigitalPage ctx={ctx} />}
         {tab === "nota" && <SalesHistoryPage ctx={ctx} />}
         {tab === "laporan" && can(user, "viewCostAndProfit") && <ReportPage ctx={ctx} />}
+        {tab === "terlaris" && can(user, "viewCostAndProfit") && <BestSellersPage ctx={ctx} />}
+        {tab === "bayar" && can(user, "viewCostAndProfit") && <PaymentsPage ctx={ctx} />}
         {tab === "pengaturan" && <SettingsPage ctx={ctx} onStoreSaved={setStore} />}
       </main>
       <nav className="bottom-nav" aria-label="Menu utama">

@@ -1,76 +1,24 @@
-import { useState } from "react";
-import { formatDayRange, loadReport, reportFileName, type DayRange } from "../application/reports";
+import { useEffect, useState } from "react";
+import { loadReport, reportFileName } from "../application/reports";
 import { BUSINESS_LINE_LABELS, BUSINESS_LINES } from "../domain/report";
-import { jakartaMonthRange, jakartaDayKey, shiftDayKey } from "../domain/time";
 import { PAYMENT_LABELS } from "../printing/receipt";
 import { buildReportPdf } from "../reports/report-pdf";
 import { Chips, EmptyState, ErrorText, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
-import { dayLabel, rp, rpSigned, thisMonthKey, todayKey } from "./format";
+import { dayLabel, rp, rpSigned } from "./format";
+import { useRangeFilter } from "./RangeFilter";
 
 type Detail = "hp" | "service" | "barang";
-type Preset = "hari-ini" | "kemarin" | "7-hari" | "bulan-ini" | "bulan-lalu" | "bulan" | "tanggal";
-
-const PRESETS: readonly { readonly id: Preset; readonly label: string }[] = [
-  { id: "hari-ini", label: "Hari ini" },
-  { id: "kemarin", label: "Kemarin" },
-  { id: "7-hari", label: "7 hari" },
-  { id: "bulan-ini", label: "Bulan ini" },
-  { id: "bulan-lalu", label: "Bulan lalu" },
-  { id: "bulan", label: "Pilih bulan" },
-  { id: "tanggal", label: "Pilih tanggal" },
-];
-
-function monthDays(monthKey: string): DayRange {
-  const range = jakartaMonthRange(monthKey);
-  const today = todayKey();
-  const last = jakartaDayKey(range.endMs - 1);
-  return { from: jakartaDayKey(range.startMs), to: last > today ? today : last };
-}
-
-function presetRange(preset: Exclude<Preset, "bulan" | "tanggal">): DayRange {
-  const today = todayKey();
-  switch (preset) {
-    case "hari-ini":
-      return { from: today, to: today };
-    case "kemarin": {
-      const day = shiftDayKey(today, -1);
-      return { from: day, to: day };
-    }
-    case "7-hari":
-      return { from: shiftDayKey(today, -6), to: today };
-    case "bulan-ini":
-      return monthDays(thisMonthKey());
-    case "bulan-lalu":
-      return monthDays(shiftDayKey(`${thisMonthKey()}-01`, -1).slice(0, 7));
-  }
-}
-
 export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
-  const [preset, setPreset] = useState<Preset>("hari-ini");
-  const [range, setRange] = useState<DayRange>(presetRange("hari-ini"));
-  const [month, setMonth] = useState(thisMonthKey());
+  const filter = useRangeFilter();
+  const range = filter.range;
   const [detail, setDetail] = useState<Detail>("hp");
   const exporting = useAction();
   const [exported, setExported] = useState<string | null>(null);
+  useEffect(() => setExported(null), [range.from, range.to]);
 
   const report = useLoad(() => loadReport(ctx.repo, range), [ctx.repo, ctx.dataVersion, range.from, range.to]);
   const data = report.data;
-  const today = todayKey();
-
-  function choose(next: Preset) {
-    setPreset(next);
-    setExported(null);
-    if (next === "bulan") setRange(monthDays(month));
-    else if (next !== "tanggal") setRange(presetRange(next));
-  }
-
-  function setDate(edge: "from" | "to", value: string) {
-    if (value.length === 0) return;
-    const next = { ...range, [edge]: value > today ? today : value };
-    setRange(next.from > next.to ? { from: next.to, to: next.from } : next);
-    setExported(null);
-  }
 
   async function exportPdf() {
     if (data === null) return;
@@ -87,51 +35,7 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
 
   return (
     <div className="page">
-      <section className="range-filter">
-        <div className="range-presets" role="radiogroup" aria-label="Periode laporan">
-          {PRESETS.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="radio"
-              aria-checked={preset === item.id}
-              className={preset === item.id ? "range-chip active" : "range-chip"}
-              onClick={() => choose(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-        {preset === "bulan" && (
-          <label className="range-month">
-            Bulan
-            <input
-              type="month"
-              value={month}
-              max={thisMonthKey()}
-              onChange={(event) => {
-                if (!event.target.value) return;
-                setMonth(event.target.value);
-                setRange(monthDays(event.target.value));
-                setExported(null);
-              }}
-            />
-          </label>
-        )}
-        {preset === "tanggal" && (
-          <div className="range-dates">
-            <label>
-              Dari
-              <input type="date" value={range.from} max={today} onChange={(event) => setDate("from", event.target.value)} />
-            </label>
-            <label>
-              Sampai
-              <input type="date" value={range.to} max={today} onChange={(event) => setDate("to", event.target.value)} />
-            </label>
-          </div>
-        )}
-        <p className="range-summary">Periode: {range.from === range.to ? dayLabel(range.from) : formatDayRange(range)}</p>
-      </section>
+      {filter.element}
 
       <ErrorText error={report.error} />
       {data === null ? (
@@ -200,10 +104,7 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
                       <button
                         type="button"
                         className="bar-row"
-                        onClick={() => {
-                          setPreset("tanggal");
-                          setRange({ from: item.day, to: item.day });
-                        }}
+                        onClick={() => filter.showDay(item.day)}
                       >
                         <span className="bar-label">{dayLabel(item.day)}</span>
                         <span className="bar-track">

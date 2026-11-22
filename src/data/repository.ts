@@ -233,6 +233,8 @@ export interface PhoneProfitRow {
   readonly soldAtMs: number;
   readonly phoneUnitId: string;
   readonly name: string;
+  /** Merek + tipe + varian, tanpa warna (untuk peringkat terlaris). */
+  readonly modelName: string;
   readonly imei1: string;
   readonly condition: PhoneCondition;
   readonly source: PhoneSource;
@@ -251,6 +253,25 @@ export interface PaymentTotals {
   /** Uang masuk: nota (setelah potongan tukar tambah) + biaya service diambil. */
   readonly amountRupiah: Rupiah;
   readonly count: number;
+}
+
+export interface PaymentEntry {
+  readonly source: "nota" | "service";
+  readonly atMs: number;
+  readonly method: PaymentMethod;
+  readonly amountRupiah: Rupiah;
+}
+
+/** Jumlahkan uang masuk per cara bayar (selalu tunai, transfer, qris). */
+export function totalsByMethod(entries: readonly PaymentEntry[]): readonly PaymentTotals[] {
+  return (["tunai", "transfer", "qris"] as const).map((method) => {
+    const list = entries.filter((entry) => entry.method === method);
+    return {
+      method,
+      amountRupiah: list.reduce((sum, entry) => sum + entry.amountRupiah, 0n),
+      count: list.length,
+    };
+  });
 }
 
 export interface ItemSalesRow {
@@ -1028,32 +1049,34 @@ export class KonterRepository {
    * sebesar biayanya pada hari diambil (data lama tanpa cara bayar = tunai).
    */
   async paymentTotals(range: TimeRange): Promise<readonly PaymentTotals[]> {
-    const totals = new Map<PaymentMethod, { amount: bigint; count: number }>(
-      (["tunai", "transfer", "qris"] as const).map((method) => [method, { amount: 0n, count: 0 }]),
+    return totalsByMethod(await this.paymentEntries(range));
+  }
+
+  /**
+   * Setiap uang masuk dalam periode: nota (setelah potongan tukar tambah; nota
+   * yang membayar pelanggan dihitung 0) dan service diambil (data lama tanpa
+   * cara bayar = tunai). Urut waktu.
+   */
+  async paymentEntries(range: TimeRange): Promise<readonly PaymentEntry[]> {
+    const rows = await this.database.query(
+      `SELECT 'nota' AS source, sold_at_ms AS at, payment_method AS method,
+              items_total_rupiah - trade_in_credit_rupiah AS amount
+       FROM sales WHERE voided_at_ms IS NULL AND sold_at_ms >= ? AND sold_at_ms < ?
+       UNION ALL
+       SELECT 'service', picked_up_at_ms, COALESCE(payment_method, 'tunai'), total_charge_rupiah
+       FROM service_orders WHERE status = 'diambil' AND picked_up_at_ms >= ? AND picked_up_at_ms < ?
+       ORDER BY at`,
+      [range.startMs, range.endMs, range.startMs, range.endMs],
     );
-    const sales = await this.database.query(
-      `SELECT payment_method, items_total_rupiah - trade_in_credit_rupiah AS due FROM sales
-       WHERE voided_at_ms IS NULL AND sold_at_ms >= ? AND sold_at_ms < ?`,
-      [range.startMs, range.endMs],
-    );
-    for (const row of sales) {
-      const bucket = totals.get(assertPaymentMethod(readText(row, "payment_method")))!;
-      const due = readBigint(row, "due");
-      if (due > 0n) bucket.amount += due;
-      bucket.count += 1;
-    }
-    const services = await this.database.query(
-      `SELECT payment_method, total_charge_rupiah FROM service_orders
-       WHERE status = 'diambil' AND picked_up_at_ms >= ? AND picked_up_at_ms < ?`,
-      [range.startMs, range.endMs],
-    );
-    for (const row of services) {
-      const method = readOptionalText(row, "payment_method");
-      const bucket = totals.get(method === null ? "tunai" : assertPaymentMethod(method))!;
-      bucket.amount += readBigint(row, "total_charge_rupiah");
-      bucket.count += 1;
-    }
-    return [...totals].map(([method, value]) => ({ method, amountRupiah: value.amount, count: value.count }));
+    return rows.map((row) => {
+      const amount = readBigint(row, "amount");
+      return {
+        source: readText(row, "source") as "nota" | "service",
+        atMs: readNumber(row, "at"),
+        method: assertPaymentMethod(readText(row, "method")),
+        amountRupiah: amount > 0n ? amount : 0n,
+      };
+    });
   }
 
   /** Waktu setiap transaksi (nota tidak batal + service diambil) dalam periode. */
@@ -1117,6 +1140,12 @@ export class KonterRepository {
           model: readText(row, "model"),
           variant: readOptionalText(row, "variant"),
           color: readOptionalText(row, "color"),
+        }),
+        modelName: phoneDisplayName({
+          brand: readText(row, "brand"),
+          model: readText(row, "model"),
+          variant: readOptionalText(row, "variant"),
+          color: null,
         }),
         imei1: readText(row, "imei1"),
         condition: readText(row, "condition") as PhoneCondition,

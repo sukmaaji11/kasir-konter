@@ -391,9 +391,9 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
               />
               <MenuRow
                 title="Barang terlaris"
-                detail={d?.topItem ? `${d.topItem.name} · ${d.topItem.quantity.toString()} terjual minggu ini` : "Aksesoris & digital paling laku"}
+                detail={d?.topItem ? `${d.topItem.name} · ${d.topItem.quantity.toString()} terjual minggu ini` : "HP, aksesoris & digital paling laku"}
                 tone="terlaris"
-                onClick={() => ctx.open("laporan")}
+                onClick={() => ctx.open("terlaris")}
                 icon={
                   <>
                     <path d="M8 21h8M12 17v4" />
@@ -406,7 +406,7 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
                 title="Cara bayar"
                 detail={paymentDetail}
                 tone="bayar"
-                onClick={() => ctx.open("laporan")}
+                onClick={() => ctx.open("bayar")}
                 icon={
                   <>
                     <rect x="2.5" y="5.5" width="19" height="13" rx="2.5" />
@@ -425,18 +425,6 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
               <>
                 <path d="M6 3h12v18l-3-2-3 2-3-2-3 2z" />
                 <path d="M9 8h6M9 12h6" />
-              </>
-            }
-          />
-          <MenuRow
-            title="Pengaturan"
-            detail={owner ? "Profil konter · Printer · Karyawan" : "Ganti PIN · Kunci aplikasi"}
-            tone="pengaturan"
-            onClick={() => ctx.open("pengaturan")}
-            icon={
-              <>
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
               </>
             }
           />
