@@ -1731,183 +1731,6 @@ button.list-card:not(:disabled):active {
   75% { transform: translateX(-4px); }
 }
 
-/* ---------- Beranda: rincian per lini, grafik 7 hari, perhatian ---------- */
-
-.line-strip {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.line-chip {
-  display: grid;
-  gap: 1px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  text-align: left;
-  font-size: 11px;
-}
-
-.line-chip-head {
-  color: var(--muted);
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.line-chip strong {
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.week-chart {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  align-items: end;
-  height: 132px;
-}
-
-.week-col {
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  height: 100%;
-  gap: 3px;
-  justify-items: center;
-}
-
-.week-value {
-  color: var(--muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.week-bar-track {
-  display: flex;
-  width: 100%;
-  max-width: 34px;
-  align-items: flex-end;
-}
-
-.week-bar {
-  position: relative;
-  display: flex;
-  width: 100%;
-  align-items: flex-end;
-  overflow: hidden;
-  border-radius: 6px 6px 2px 2px;
-  background: #b9cbe2;
-}
-
-.week-col.today .week-bar {
-  background: var(--navy);
-}
-
-.week-bar-profit {
-  width: 100%;
-  background: var(--amber);
-}
-
-.week-day {
-  color: var(--muted);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.week-col.today .week-day {
-  color: var(--navy);
-  font-weight: 800;
-}
-
-.week-legend {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.legend-dot {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-}
-
-.legend-dot.omzet {
-  background: var(--navy);
-}
-
-.legend-dot.untung {
-  margin-left: 8px;
-  background: var(--amber);
-}
-
-.mini-stats.four {
-  grid-template-columns: repeat(4, 1fr);
-}
-
-.mini-stat.warn strong {
-  color: #a15c00;
-}
-
-.attention-list,
-.activity-list {
-  display: grid;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.attention-row,
-.activity-row {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 2px;
-  border: 0;
-  border-bottom: 1px solid #eef1f5;
-  background: none;
-  text-align: left;
-}
-
-.attention-list li:last-child .attention-row,
-.activity-list li:last-child .activity-row {
-  border-bottom: 0;
-}
-
-.attention-main {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 1px;
-}
-
-.attention-main strong {
-  overflow: hidden;
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attention-side {
-  flex: 0 0 auto;
-  font-size: 13px;
-}
-
-.attention-more {
-  padding: 6px 2px;
-}
-
-@media (max-width: 460px) {
-  .line-strip,
-  .mini-stats.four {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
 /* ---------- Kasir: bagian Barang / Digital / Service ---------- */
 
 .segmented {
@@ -2470,4 +2293,362 @@ button.list-card:not(:disabled):active {
   margin-top: 4px;
   padding-top: 12px;
   border-top: 1px solid #eef1f5;
+}
+
+/* ---------- Beranda (gaya Dashboard Kasir Kaki Lima) ---------- */
+
+.dashboard {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-greeting h1 {
+  font-size: 20px;
+}
+
+.dashboard-greeting p {
+  margin-bottom: 2px;
+  font-size: 12px;
+}
+
+.action-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  color: #fff;
+  background: linear-gradient(135deg, #2c5487, var(--navy-dark));
+  box-shadow: 0 10px 24px rgba(21, 42, 70, 0.22);
+}
+
+.action-card > div {
+  display: grid;
+  gap: 3px;
+}
+
+.action-card strong {
+  font-size: 16px;
+}
+
+.action-card-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #5fd38d;
+  box-shadow: 0 0 0 3px rgba(95, 211, 141, 0.25);
+}
+
+.action-card.alert .status-dot {
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(242, 181, 68, 0.3);
+}
+
+.action-card-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--navy-dark);
+  background: var(--amber);
+  font-weight: 800;
+}
+
+.dashboard-empty {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-section {
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-heading {
+  font-size: 16px;
+}
+
+.dashboard-card {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-card h2 {
+  font-size: 16px;
+}
+
+.dashboard-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-card-head p {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.kpi-tile {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.kpi-tile span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.kpi-tile strong {
+  overflow: hidden;
+  font-size: 17px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kpi-tile small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.kpi-hero {
+  grid-column: 1 / -1;
+  padding: 14px 16px;
+}
+
+.kpi-hero strong {
+  font-size: 26px;
+  letter-spacing: -0.02em;
+}
+
+.delta {
+  font-weight: 800;
+}
+
+.delta.up {
+  color: var(--green);
+}
+
+.delta.down {
+  color: var(--red);
+}
+
+.week-focus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+}
+
+.week-focus span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.week-focus strong {
+  font-size: 20px;
+}
+
+.week-focus small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dash-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+  height: 150px;
+  padding-top: 4px;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.dash-bar {
+  /* Flex + batang absolut: tinggi persen tetap benar di WebView lama. */
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.dash-bar-track {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border-radius: 10px;
+  transition: background-color 120ms ease;
+}
+
+.dash-bar.selected .dash-bar-track {
+  background: #eef3f9;
+}
+
+.dash-bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  width: min(28px, 70%);
+  border-radius: 4px 4px 0 0;
+  background: #a9bfdc;
+  transform: translateX(-50%);
+  transition: height 300ms ease;
+}
+
+.dash-bar.today .dash-bar-fill,
+.dash-bar.selected .dash-bar-fill {
+  background: var(--navy);
+}
+
+.dash-bar-label {
+  padding-bottom: 6px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dash-bar.selected .dash-bar-label {
+  color: var(--navy-dark);
+}
+
+.owner-menu {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: 0 2px 12px rgba(20, 40, 70, 0.05);
+}
+
+.owner-menu-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 0;
+  border-bottom: 1px solid #edf0f4;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.owner-menu-row:last-child {
+  border-bottom: 0;
+}
+
+.owner-menu-row:active {
+  background: #f3f6fa;
+}
+
+.owner-menu-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+}
+
+.owner-menu-icon svg,
+.owner-menu-chevron {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.owner-menu-icon svg {
+  width: 21px;
+  height: 21px;
+  stroke-width: 2;
+}
+
+.owner-menu-row.service .owner-menu-icon { color: #b0620f; background: #fdeed8; }
+.owner-menu-row.hp .owner-menu-icon { color: #1f3a5f; background: #e3ebf6; }
+.owner-menu-row.aksesoris .owner-menu-icon { color: #6b3fa0; background: #efe6f9; }
+.owner-menu-row.digital .owner-menu-icon { color: #1d7a46; background: #e2f4e8; }
+.owner-menu-row.laporan .owner-menu-icon { color: #a2412f; background: #fbe6e1; }
+.owner-menu-row.terlaris .owner-menu-icon { color: #9a6a00; background: #fff1d1; }
+.owner-menu-row.bayar .owner-menu-icon { color: #2f5d87; background: #e2ecf6; }
+.owner-menu-row.nota .owner-menu-icon { color: #36506e; background: #eaeef3; }
+.owner-menu-row.pengaturan .owner-menu-icon { color: #5a6573; background: #eef0f3; }
+
+.owner-menu-text {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.owner-menu-text strong {
+  font-size: 15px;
+}
+
+.owner-menu-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owner-menu-text small.alert {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.owner-menu-chevron {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #a3adba;
+  stroke-width: 2;
+}
+
+@media (min-width: 720px) {
+  .dashboard {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+
+  .dashboard > .dashboard-greeting,
+  .dashboard > .action-card,
+  .dashboard > .error-message,
+  .dashboard > .dashboard-empty {
+    grid-column: 1 / -1;
+  }
 }

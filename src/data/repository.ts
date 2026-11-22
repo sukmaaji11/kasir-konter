@@ -1056,6 +1056,19 @@ export class KonterRepository {
     return [...totals].map(([method, value]) => ({ method, amountRupiah: value.amount, count: value.count }));
   }
 
+  /** Waktu setiap transaksi (nota tidak batal + service diambil) dalam periode. */
+  async transactionTimes(range: TimeRange): Promise<readonly number[]> {
+    const rows = await this.database.query(
+      `SELECT sold_at_ms AS at FROM sales
+       WHERE voided_at_ms IS NULL AND sold_at_ms >= ? AND sold_at_ms < ?
+       UNION ALL
+       SELECT picked_up_at_ms AS at FROM service_orders
+       WHERE status = 'diambil' AND picked_up_at_ms >= ? AND picked_up_at_ms < ?`,
+      [range.startMs, range.endMs, range.startMs, range.endMs],
+    );
+    return rows.map((row) => readNumber(row, "at"));
+  }
+
   /** Aksesoris dan produk digital terjual, dikelompokkan per nama, terbanyak dulu. */
   async itemSales(range: TimeRange): Promise<readonly ItemSalesRow[]> {
     const rows = await this.database.query(
