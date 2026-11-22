@@ -16,16 +16,15 @@ import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./commo
 import type { PageContext } from "./context";
 import { ageLabel, digitsToRupiah, rp, rpSigned, rupiahToDigits } from "./format";
 import { ProductThumb } from "./PhotoStrip";
-import { saleReceiptText } from "./receipts";
+import type { CashDetail } from "../printing/receipt";
+import { SaleReceiptSheet, ServiceReceiptSheet } from "./NotaSheets";
 import {
   NewServiceSheet,
   PAYMENT_OPTIONS,
   STATUS_BADGE,
   ServiceDetailSheet,
-  ServiceDoneSheet,
   ServicePaySheet,
 } from "./ServicePage";
-import { openWhatsApp, shareText } from "./whatsapp";
 
 /**
  * Kasir punya tiga bagian:
@@ -105,7 +104,7 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<readonly CartLine[]>([]);
   const [checkout, setCheckout] = useState(false);
-  const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+  const [receipt, setReceipt] = useState<{ readonly sale: SaleRecord; readonly cash: CashDetail | null } | null>(null);
   const [digitalDraft, setDigitalDraft] = useState<DigitalDraft | null>(null);
 
   const cartCount = cart.reduce((sum, line) => sum + (line.kind === "hp" ? 1 : line.quantity), 0);
@@ -169,7 +168,7 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
             </button>
           ))}
         </div>
-        {mode !== "service" && (
+        {(mode === "barang" || (mode === "digital" && (stock.data?.digital.length ?? 0) > 0)) && (
           <input
             className="search-input"
             type="search"
@@ -268,16 +267,16 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
           setCart={setCart}
           thumbs={{ phone: stock.data?.phoneThumbs, accessory: stock.data?.accessoryThumbs }}
           onClose={() => setCheckout(false)}
-          onSaved={(sale) => {
+          onSaved={(sale, cash) => {
             setCheckout(false);
             setCart([]);
             setSearch("");
-            setReceipt(sale);
+            setReceipt({ sale, cash });
             ctx.changed();
           }}
         />
       )}
-      {receipt !== null && <ReceiptSheet ctx={ctx} sale={receipt} onClose={() => setReceipt(null)} />}
+      {receipt !== null && <SaleReceiptSheet ctx={ctx} sale={receipt.sale} cash={receipt.cash} fresh onClose={() => setReceipt(null)} />}
     </div>
   );
 }
@@ -448,14 +447,44 @@ function DigitalGrid({
   const inCart = (productId: string) =>
     cart.reduce((sum, line) => sum + (line.kind === "digital" && line.product?.id === productId ? line.quantity : 0), 0);
 
+  const manage = can(ctx.user, "manageAccessories");
+
+  if (products.length === 0) {
+    return (
+      <section className="empty-guide">
+        <span className="empty-guide-icon" aria-hidden="true">📶</span>
+        <h2>Belum ada daftar produk digital</h2>
+        <p className="muted">
+          Bagian ini untuk menjual <strong>pulsa, paket data, kartu perdana, top up e-wallet/game,</strong> dan{" "}
+          <strong>token listrik</strong>.
+        </p>
+        <ol className="empty-guide-steps">
+          <li>
+            {manage ? "Isi" : "Owner mengisi"} daftar harga sekali saja, misalnya <em>Pulsa Telkomsel 10rb</em>: modal Rp10.250,
+            jual Rp12.000.
+          </li>
+          <li>Saat ada pembeli, tinggal ketuk produknya, isi nomor tujuan, lalu Bayar.</li>
+        </ol>
+        {manage ? (
+          <button type="button" className="button button-primary" onClick={() => ctx.open("digital")}>
+            + Isi daftar produk digital
+          </button>
+        ) : (
+          <p className="inline-note">Minta Owner mengisi daftar di menu Produk digital.</p>
+        )}
+        <div className="empty-guide-alt">
+          <span className="muted small">Ada pembeli sekarang dan produknya belum ada di daftar?</span>
+          <button type="button" className="button button-secondary" onClick={() => onPick(null)}>
+            ✍️ Jual dengan isi manual
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section>
       <div className="product-grid compact">
-        <button type="button" className="product-card manual-card" onClick={() => onPick(null)}>
-          <span className="product-thumb thumb-md placeholder" aria-hidden="true">✍️</span>
-          <span className="product-name">Transaksi manual</span>
-          <span className="product-meta">Isi nama, nomor, modal &amp; harga sendiri</span>
-        </button>
         {list.map((item) => {
           const count = inCart(item.id);
           const soldOut = item.tracksStock && item.stockQuantity === 0n;
@@ -481,20 +510,13 @@ function DigitalGrid({
             </button>
           );
         })}
+        <button type="button" className="product-card manual-card" onClick={() => onPick(null)}>
+          <span className="product-thumb thumb-md placeholder" aria-hidden="true">✍️</span>
+          <span className="product-name">Isi manual</span>
+          <span className="product-meta">Untuk produk yang tidak ada di daftar</span>
+        </button>
       </div>
-      {products.length === 0 && (
-        <p className="muted small digital-hint">
-          Belum ada daftar harga digital.{" "}
-          {can(ctx.user, "manageAccessories") ? (
-            <button type="button" className="link-like" onClick={() => ctx.open("digital")}>
-              Isi daftar Produk digital
-            </button>
-          ) : (
-            "Minta Owner mengisi daftar Produk digital."
-          )}{" "}
-          supaya tinggal ketuk, atau pakai Transaksi manual.
-        </p>
-      )}
+      {list.length === 0 && <EmptyState>Tidak ada produk yang cocok. Pakai "Isi manual" atau ganti kata pencarian.</EmptyState>}
     </section>
   );
 }
@@ -541,7 +563,7 @@ function DigitalLineSheet({
   }
 
   return (
-    <Sheet title={manual ? "Transaksi manual" : product.name} onClose={onClose}>
+    <Sheet title={manual ? "Jual digital (isi manual)" : product.name} onClose={onClose}>
       {manual && (
         <>
           <Chips
@@ -726,7 +748,7 @@ function ServiceCashier({ ctx, orders }: { readonly ctx: PageContext; readonly o
           }}
         />
       )}
-      {paid !== null && <ServiceDoneSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
+      {paid !== null && <ServiceReceiptSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
     </>
   );
 }
@@ -766,7 +788,7 @@ function CheckoutSheet({
     readonly accessory: ReadonlyMap<string, string> | undefined;
   };
   readonly onClose: () => void;
-  readonly onSaved: (sale: SaleRecord) => void;
+  readonly onSaved: (sale: SaleRecord, cash: CashDetail | null) => void;
 }) {
   const showCost = can(ctx.user, "viewCostAndProfit");
   const hasPhone = cart.some((line) => line.kind === "hp");
@@ -775,6 +797,7 @@ function CheckoutSheet({
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("tunai");
+  const [received, setReceived] = useState("");
   const action = useAction();
   const activeTradeIn = hasPhone ? tradeIn : null;
 
@@ -804,6 +827,10 @@ function CheckoutSheet({
   async function save() {
     await action.run(async () => {
       if (!totals.complete) throw new Error("Isi harga jual semua barang dulu.");
+      const receivedRupiah = payment === "tunai" ? digitsToRupiah(received) : null;
+      if (receivedRupiah !== null && receivedRupiah < totals.due) {
+        throw new Error(`Uang diterima kurang ${rp(totals.due - receivedRupiah)}.`);
+      }
       const lines: SaleLineInput[] = cart.map((line): SaleLineInput => {
         const price = digitsToRupiah(line.price) ?? 0n;
         switch (line.kind) {
@@ -841,7 +868,10 @@ function CheckoutSheet({
         customerName,
         customerPhone,
       });
-      onSaved(sale);
+      onSaved(
+        sale,
+        receivedRupiah === null ? null : { receivedRupiah, changeRupiah: receivedRupiah - sale.summary.amountDueRupiah },
+      );
     });
   }
 
@@ -1000,6 +1030,28 @@ function CheckoutSheet({
         <span className="field-label">Bayar pakai</span>
         <Chips value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} label="Metode bayar" />
       </div>
+      {payment === "tunai" && totals.due > 0n && (
+        <div className="cash-row">
+          <label>
+            Uang diterima
+            <CurrencyInput value={received} onValueChange={setReceived} placeholder="Boleh dikosongkan" />
+          </label>
+          <div className="cash-quick">
+            {cashSuggestions(totals.due).map((amount) => (
+              <button key={amount.toString()} type="button" className="chip" onClick={() => setReceived(amount.toString())}>
+                {amount === totals.due ? "Uang pas" : rp(amount)}
+              </button>
+            ))}
+          </div>
+          {digitsToRupiah(received) !== null && (
+            <p className={(digitsToRupiah(received) ?? 0n) >= totals.due ? "change-note" : "change-note short"}>
+              {(digitsToRupiah(received) ?? 0n) >= totals.due
+                ? <>Kembalian <strong>{rp((digitsToRupiah(received) ?? 0n) - totals.due)}</strong></>
+                : <>Kurang <strong>{rp(totals.due - (digitsToRupiah(received) ?? 0n))}</strong></>}
+            </p>
+          )}
+        </div>
+      )}
 
       <dl className="totals">
         {activeTradeIn !== null && (
@@ -1033,43 +1085,12 @@ function CheckoutSheet({
   );
 }
 
-export function ReceiptSheet({
-  ctx,
-  sale,
-  onClose,
-}: {
-  readonly ctx: PageContext;
-  readonly sale: SaleRecord;
-  readonly onClose: () => void;
-}) {
-  const text = saleReceiptText(sale, ctx.store);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <Sheet title={`Nota ${sale.number}`} onClose={onClose}>
-      <pre className="receipt-preview">{text}</pre>
-      {can(ctx.user, "viewCostAndProfit") && (
-        <p className="profit-note">
-          Untung nota ini: <strong>{rpSigned(sale.summary.profitRupiah)}</strong>
-        </p>
-      )}
-      <ErrorText error={error} />
-      <div className="button-row">
-        {sale.customerPhone !== null && (
-          <button type="button" className="button whatsapp-button" onClick={() => openWhatsApp(sale.customerPhone!, text)}>
-            Kirim ke WA pelanggan
-          </button>
-        )}
-        <button
-          type="button"
-          className="button button-secondary"
-          onClick={() => shareText(`Nota ${sale.number}`, text).catch(() => setError("Tidak bisa membuka menu Bagikan."))}
-        >
-          Bagikan…
-        </button>
-        <button type="button" className="button button-primary" onClick={onClose}>
-          Selesai
-        </button>
-      </div>
-    </Sheet>
-  );
+/** Uang pas + 3 pembulatan ke atas terdekat (10rb … 1jt). */
+function cashSuggestions(due: bigint): readonly bigint[] {
+  const values = new Set<bigint>([due]);
+  for (const step of [10_000n, 50_000n, 100_000n, 500_000n, 1_000_000n]) {
+    const rounded = ((due + step - 1n) / step) * step;
+    if (rounded > due) values.add(rounded);
+  }
+  return [...values].sort((a, b) => (a < b ? -1 : 1)).slice(0, 4);
 }

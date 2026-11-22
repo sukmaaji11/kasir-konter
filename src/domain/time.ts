@@ -69,3 +69,23 @@ export function daysInJakartaMonth(monthKey: string): readonly string[] {
 export function documentNumber(prefix: string, ms: number, sequence: number): string {
   return `${prefix}-${jakartaDayKey(ms).replaceAll("-", "")}-${pad(sequence, 3)}`;
 }
+
+/** Geser tanggal YYYY-MM-DD sebanyak `days` hari. */
+export function shiftDayKey(dayKey: string, days: number): string {
+  return jakartaDayKey(jakartaDayRange(dayKey).startMs + days * DAY_MS);
+}
+
+/** Rentang dari awal hari `fromDay` sampai akhir hari `toDay` (WIB), inklusif. */
+export function jakartaDaysRange(fromDay: string, toDay: string): TimeRange {
+  const from = jakartaDayRange(fromDay <= toDay ? fromDay : toDay);
+  const to = jakartaDayRange(fromDay <= toDay ? toDay : fromDay);
+  return { startMs: from.startMs, endMs: to.endMs };
+}
+
+/** Semua tanggal dari `fromDay` sampai `toDay`, inklusif. */
+export function daysBetween(fromDay: string, toDay: string): readonly string[] {
+  const { startMs, endMs } = jakartaDaysRange(fromDay, toDay);
+  const days: string[] = [];
+  for (let ms = startMs; ms < endMs; ms += DAY_MS) days.push(jakartaDayKey(ms));
+  return days;
+}

@@ -6,6 +6,9 @@
 import { createRoot } from "react-dom/client";
 import { AuthApplicationService } from "../application/auth";
 import { LicenseApplicationService } from "../application/license";
+import { PrintingApplicationService } from "../application/printing";
+import { createConsolePrinterPort } from "../printing/printer-port";
+import { createBrowserFileSharer } from "../reports/file-share";
 import { openBrowserDevRepository } from "../data/browser-dev-repository";
 import type { KonterRepository } from "../data/repository";
 import { LICENSE_PUBLIC_KEY } from "../licensing/public-key";
@@ -134,6 +137,8 @@ async function start() {
     repo,
     auth,
     license: new LicenseApplicationService(repo, async () => "preview", LICENSE_PUBLIC_KEY),
+    printing: new PrintingApplicationService(repo, createConsolePrinterPort()),
+    files: createBrowserFileSharer(),
     isBrowserDevelopment: false,
   };
   createRoot(document.getElementById("root")!).render(

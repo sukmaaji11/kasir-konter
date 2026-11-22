@@ -48,7 +48,7 @@ export function DigitalPage({ ctx }: { readonly ctx: PageContext }) {
     <div className="page">
       <p className="muted small">
         Daftar harga pulsa, paket data, kartu perdana, top up, dan token. Yang tidak ada di daftar bisa dijual lewat
-        "Transaksi manual" di Kasir.
+        "Isi manual" di Kasir.
       </p>
       <div className="stat-row">
         <div className="stat">

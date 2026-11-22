@@ -2,6 +2,8 @@ import { Capacitor } from "@capacitor/core";
 import { useEffect, useState } from "react";
 import { AuthApplicationService } from "../application/auth";
 import { LicenseApplicationService } from "../application/license";
+import { PrintingApplicationService } from "../application/printing";
+import type { FileSharer } from "../reports/file-share";
 import type { KonterRepository } from "../data/repository";
 import { can, roleLabel, type AppUser } from "../domain/auth";
 import { LICENSE_PUBLIC_KEY } from "../licensing/public-key";
@@ -27,6 +29,8 @@ export interface Runtime {
   readonly repo: KonterRepository;
   readonly auth: AuthApplicationService;
   readonly license: LicenseApplicationService;
+  readonly printing: PrintingApplicationService;
+  readonly files: FileSharer;
   readonly isBrowserDevelopment: boolean;
 }
 
@@ -117,6 +121,8 @@ export function MainApp({
     repo: runtime.repo,
     auth: runtime.auth,
     license: runtime.license,
+    printing: runtime.printing,
+    files: runtime.files,
     user,
     store,
     dataVersion,
@@ -188,19 +194,27 @@ async function openRuntime(): Promise<Runtime> {
   if (Capacitor.isNativePlatform()) {
     const { openCapacitorDatabase } = await import("../data/capacitor-sqlite");
     const { Device } = await import("@capacitor/device");
+    const { createCapacitorPrinterPort } = await import("../printing/printer-port");
+    const { createCapacitorFileSharer } = await import("../reports/file-share");
     const opened = await openCapacitorDatabase();
     return {
       repo: opened.repository,
       ...accessServices(opened.repository, async () => (await Device.getId()).identifier),
+      printing: new PrintingApplicationService(opened.repository, await createCapacitorPrinterPort()),
+      files: await createCapacitorFileSharer(),
       isBrowserDevelopment: false,
     };
   }
   if (import.meta.env.DEV) {
     const { openBrowserDevRepository } = await import("../data/browser-dev-repository");
+    const { createConsolePrinterPort } = await import("../printing/printer-port");
+    const { createBrowserFileSharer } = await import("../reports/file-share");
     const opened = await openBrowserDevRepository();
     return {
       repo: opened.repository,
       ...accessServices(opened.repository, async () => browserDeviceId()),
+      printing: new PrintingApplicationService(opened.repository, createConsolePrinterPort()),
+      files: createBrowserFileSharer(),
       isBrowserDevelopment: true,
     };
   }

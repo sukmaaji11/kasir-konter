@@ -24,16 +24,6 @@ const LINE_ICONS: Readonly<Record<BusinessLine, string>> = {
   service: "🔧",
 };
 
-interface Activity {
-  readonly key: string;
-  readonly atMs: number;
-  readonly icon: string;
-  readonly title: string;
-  readonly sub: string;
-  readonly amount: bigint;
-  readonly page: Tab;
-}
-
 export function HomePage({ ctx }: { readonly ctx: PageContext }) {
   const owner = can(ctx.user, "viewCostAndProfit");
   const data = useLoad(async () => {
@@ -53,29 +43,6 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
     const accessories = await ctx.repo.listAccessories();
     const digital = await ctx.repo.listDigitalProducts();
 
-    const activities: Activity[] = [
-      ...sales.map((sale) => ({
-        key: sale.id,
-        atMs: sale.soldAtMs,
-        icon: "🧾",
-        title: sale.lines.length === 1 ? sale.lines[0]!.name : `${sale.lines[0]!.name} +${sale.lines.length - 1} lagi`,
-        sub: `${sale.number}${sale.customerName ? ` · ${sale.customerName}` : ""}`,
-        amount: sale.summary.amountDueRupiah,
-        page: "nota" as const,
-      })),
-      ...pickedUp.map((order) => ({
-        key: order.id,
-        atMs: order.pickedUpAtMs ?? 0,
-        icon: "🔧",
-        title: `Service ${order.device} diambil`,
-        sub: `${order.number} · ${order.customerName}`,
-        amount: order.totalChargeRupiah ?? 0n,
-        page: "service" as const,
-      })),
-    ]
-      .sort((a, b) => b.atMs - a.atMs)
-      .slice(0, 5);
-
     const lowStock = [
       ...accessories.filter((item) => item.stockQuantity <= LOW_STOCK).map((item) => ({ name: item.name, stock: item.stockQuantity, page: "aksesoris" as const })),
       ...digital
@@ -90,7 +57,6 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
       week,
       salesCount: sales.length,
       pickedUpCount: pickedUp.length,
-      activities,
       ready: services.filter((order) => order.status !== "proses"),
       working: services.filter((order) => order.status === "proses").length,
       phoneCount: phones.length,
@@ -252,30 +218,6 @@ export function HomePage({ ctx }: { readonly ctx: PageContext }) {
         </section>
       )}
 
-      <section className="panel">
-        <h2 className="panel-title">Transaksi terakhir hari ini</h2>
-        {d && d.activities.length === 0 ? (
-          <p className="muted small">Belum ada transaksi hari ini. Mulai dari menu Kasir.</p>
-        ) : (
-          <ul className="activity-list">
-            {d?.activities.map((item) => (
-              <li key={item.key}>
-                <button type="button" className="activity-row" onClick={() => ctx.open(item.page)}>
-                  <span aria-hidden="true">{item.icon}</span>
-                  <span className="attention-main">
-                    <strong>{item.title}</strong>
-                    <span className="muted small">
-                      {timeWib(item.atMs)} · {item.sub}
-                    </span>
-                  </span>
-                  <strong className="attention-side">{rp(item.amount)}</strong>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
       <section>
         <h2 className="section-title">Menu</h2>
         <div className="menu-grid">
@@ -298,8 +240,4 @@ function shortRupiah(value: bigint): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString("id-ID", { maximumFractionDigits: 1 })} jt`;
   if (n >= 1_000) return `${Math.round(n / 1_000)} rb`;
   return n === 0 ? "0" : n.toString();
-}
-
-function timeWib(ms: number): string {
-  return new Intl.DateTimeFormat("id-ID", { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" }).format(ms);
 }

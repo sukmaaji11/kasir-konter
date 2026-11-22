@@ -1,65 +1,162 @@
 import { useState } from "react";
+import { formatDayRange, loadReport, reportFileName, type DayRange } from "../application/reports";
 import { BUSINESS_LINE_LABELS, BUSINESS_LINES } from "../domain/report";
-import { jakartaDayRange, jakartaMonthRange } from "../domain/time";
-import { Chips, EmptyState, ErrorText, useLoad } from "./common";
+import { jakartaMonthRange, jakartaDayKey, shiftDayKey } from "../domain/time";
+import { PAYMENT_LABELS } from "../printing/receipt";
+import { buildReportPdf } from "../reports/report-pdf";
+import { Chips, EmptyState, ErrorText, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
-import { dayLabel, monthLabel, rp, rpSigned, thisMonthKey, todayKey } from "./format";
+import { dayLabel, rp, rpSigned, thisMonthKey, todayKey } from "./format";
 
-type Mode = "hari" | "bulan";
-type Detail = "hp" | "service";
+type Detail = "hp" | "service" | "barang";
+type Preset = "hari-ini" | "kemarin" | "7-hari" | "bulan-ini" | "bulan-lalu" | "bulan" | "tanggal";
+
+const PRESETS: readonly { readonly id: Preset; readonly label: string }[] = [
+  { id: "hari-ini", label: "Hari ini" },
+  { id: "kemarin", label: "Kemarin" },
+  { id: "7-hari", label: "7 hari" },
+  { id: "bulan-ini", label: "Bulan ini" },
+  { id: "bulan-lalu", label: "Bulan lalu" },
+  { id: "bulan", label: "Pilih bulan" },
+  { id: "tanggal", label: "Pilih tanggal" },
+];
+
+function monthDays(monthKey: string): DayRange {
+  const range = jakartaMonthRange(monthKey);
+  const today = todayKey();
+  const last = jakartaDayKey(range.endMs - 1);
+  return { from: jakartaDayKey(range.startMs), to: last > today ? today : last };
+}
+
+function presetRange(preset: Exclude<Preset, "bulan" | "tanggal">): DayRange {
+  const today = todayKey();
+  switch (preset) {
+    case "hari-ini":
+      return { from: today, to: today };
+    case "kemarin": {
+      const day = shiftDayKey(today, -1);
+      return { from: day, to: day };
+    }
+    case "7-hari":
+      return { from: shiftDayKey(today, -6), to: today };
+    case "bulan-ini":
+      return monthDays(thisMonthKey());
+    case "bulan-lalu":
+      return monthDays(shiftDayKey(`${thisMonthKey()}-01`, -1).slice(0, 7));
+  }
+}
 
 export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
-  const [mode, setMode] = useState<Mode>("hari");
-  const [day, setDay] = useState(todayKey());
+  const [preset, setPreset] = useState<Preset>("hari-ini");
+  const [range, setRange] = useState<DayRange>(presetRange("hari-ini"));
   const [month, setMonth] = useState(thisMonthKey());
   const [detail, setDetail] = useState<Detail>("hp");
+  const exporting = useAction();
+  const [exported, setExported] = useState<string | null>(null);
 
-  const report = useLoad(async () => {
-    const range = mode === "hari" ? jakartaDayRange(day) : jakartaMonthRange(month);
-    return {
-      summary: await ctx.repo.profitSummary(range),
-      phones: await ctx.repo.phoneProfits(range),
-      services: await ctx.repo.listPickedUpServices(range),
-      daily: mode === "bulan" ? await ctx.repo.dailyProfit(month) : null,
-    };
-  }, [ctx.repo, ctx.dataVersion, mode, day, month]);
-
+  const report = useLoad(() => loadReport(ctx.repo, range), [ctx.repo, ctx.dataVersion, range.from, range.to]);
   const data = report.data;
-  const maxDaily = data?.daily?.reduce(
-    (max, item) => (item.totals.profitRupiah > max ? item.totals.profitRupiah : max),
-    0n,
-  ) ?? 0n;
+  const today = todayKey();
+
+  function choose(next: Preset) {
+    setPreset(next);
+    setExported(null);
+    if (next === "bulan") setRange(monthDays(month));
+    else if (next !== "tanggal") setRange(presetRange(next));
+  }
+
+  function setDate(edge: "from" | "to", value: string) {
+    if (value.length === 0) return;
+    const next = { ...range, [edge]: value > today ? today : value };
+    setRange(next.from > next.to ? { from: next.to, to: next.from } : next);
+    setExported(null);
+  }
+
+  async function exportPdf() {
+    if (data === null) return;
+    await exporting.run(async () => {
+      const bytes = buildReportPdf(data, { storeName: ctx.store.name.trim() || "Konter HP", generatedAtMs: Date.now() });
+      const name = reportFileName(data.range);
+      await ctx.files.share(name, bytes, "application/pdf");
+      setExported(name);
+    });
+  }
+
+  const maxDaily =
+    data?.daily?.reduce((max, item) => (item.totals.revenueRupiah > max ? item.totals.revenueRupiah : max), 0n) ?? 0n;
 
   return (
     <div className="page">
-      <div className="toolbar">
-        <Chips
-          value={mode}
-          onChange={setMode}
-          label="Periode"
-          options={[
-            { value: "hari", label: "Harian" },
-            { value: "bulan", label: "Bulanan" },
-          ]}
-        />
-        {mode === "hari" ? (
-          <input type="date" value={day} max={todayKey()} onChange={(e) => e.target.value && setDay(e.target.value)} />
-        ) : (
-          <input type="month" value={month} max={thisMonthKey()} onChange={(e) => e.target.value && setMonth(e.target.value)} />
+      <section className="range-filter">
+        <div className="range-presets" role="radiogroup" aria-label="Periode laporan">
+          {PRESETS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="radio"
+              aria-checked={preset === item.id}
+              className={preset === item.id ? "range-chip active" : "range-chip"}
+              onClick={() => choose(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        {preset === "bulan" && (
+          <label className="range-month">
+            Bulan
+            <input
+              type="month"
+              value={month}
+              max={thisMonthKey()}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                setMonth(event.target.value);
+                setRange(monthDays(event.target.value));
+                setExported(null);
+              }}
+            />
+          </label>
         )}
-      </div>
+        {preset === "tanggal" && (
+          <div className="range-dates">
+            <label>
+              Dari
+              <input type="date" value={range.from} max={today} onChange={(event) => setDate("from", event.target.value)} />
+            </label>
+            <label>
+              Sampai
+              <input type="date" value={range.to} max={today} onChange={(event) => setDate("to", event.target.value)} />
+            </label>
+          </div>
+        )}
+        <p className="range-summary">Periode: {range.from === range.to ? dayLabel(range.from) : formatDayRange(range)}</p>
+      </section>
+
       <ErrorText error={report.error} />
       {data === null ? (
         <EmptyState>Memuat laporan…</EmptyState>
       ) : (
         <>
           <section className={data.summary.total.profitRupiah >= 0n ? "hero-stat" : "hero-stat loss"}>
-            <span>Untung {mode === "hari" ? dayLabel(day) : monthLabel(month)}</span>
+            <span>Untung bersih</span>
             <strong>{rpSigned(data.summary.total.profitRupiah)}</strong>
             <span className="hero-sub">
               Omzet {rp(data.summary.total.revenueRupiah)} · Modal {rp(data.summary.total.costRupiah)}
             </span>
+            <span className="hero-sub">
+              {data.saleCount} nota · {data.services.length} service diambil
+              {data.voidedCount > 0 ? ` · ${data.voidedCount} nota dibatalkan` : ""}
+            </span>
           </section>
+
+          <div className="export-row">
+            <button type="button" className="button button-secondary" disabled={exporting.busy} onClick={() => void exportPdf()}>
+              <PdfIcon /> {exporting.busy ? "Membuat PDF…" : "Export laporan PDF"}
+            </button>
+            {exported !== null && <span className="success-text small">{exported} siap disimpan / dikirim.</span>}
+          </div>
+          <ErrorText error={exporting.error} />
 
           <div className="line-cards">
             {BUSINESS_LINES.map((line) => {
@@ -67,9 +164,7 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
               return (
                 <section key={line} className="line-card">
                   <h3>{BUSINESS_LINE_LABELS[line]}</h3>
-                  <strong className={totals.profitRupiah < 0n ? "loss-text" : undefined}>
-                    {rpSigned(totals.profitRupiah)}
-                  </strong>
+                  <strong className={totals.profitRupiah < 0n ? "loss-text" : undefined}>{rpSigned(totals.profitRupiah)}</strong>
                   <span className="muted">
                     {totals.count.toString()} {line === "hp" ? "unit" : line === "service" ? "service" : line === "digital" ? "transaksi" : "barang"} · omzet{" "}
                     {rp(totals.revenueRupiah)}
@@ -79,30 +174,53 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
             })}
           </div>
 
+          <section className="panel">
+            <h2 className="panel-title">Uang masuk per cara bayar</h2>
+            <div className="pay-totals">
+              {data.payments.map((payment) => (
+                <div key={payment.method} className="pay-total">
+                  <span>
+                    {PAYMENT_LABELS[payment.method]} · {payment.count}×
+                  </span>
+                  <strong>{rp(payment.amountRupiah)}</strong>
+                </div>
+              ))}
+            </div>
+            <p className="muted small">Nota dihitung setelah potongan tukar tambah; service dihitung saat HP diambil.</p>
+          </section>
+
           {data.daily !== null && (
             <section className="panel">
-              <h2 className="panel-title">Untung per hari</h2>
+              <h2 className="panel-title">Per hari</h2>
               <ul className="bar-list">
                 {data.daily
                   .filter((item) => item.totals.count > 0n)
                   .map((item) => (
                     <li key={item.day}>
-                      <button type="button" className="bar-row" onClick={() => { setMode("hari"); setDay(item.day); }}>
+                      <button
+                        type="button"
+                        className="bar-row"
+                        onClick={() => {
+                          setPreset("tanggal");
+                          setRange({ from: item.day, to: item.day });
+                        }}
+                      >
                         <span className="bar-label">{dayLabel(item.day)}</span>
                         <span className="bar-track">
                           <span
                             className="bar-fill"
-                            style={{
-                              width: `${maxDaily > 0n && item.totals.profitRupiah > 0n ? Number((item.totals.profitRupiah * 100n) / maxDaily) : 0}%`,
-                            }}
+                            style={{ width: `${maxDaily > 0n ? Number((item.totals.revenueRupiah * 100n) / maxDaily) : 0}%` }}
                           />
                         </span>
-                        <span className="bar-value">{rpSigned(item.totals.profitRupiah)}</span>
+                        <span className="bar-value">
+                          {rp(item.totals.revenueRupiah)}
+                          <small className={item.totals.profitRupiah < 0n ? "loss-text" : "profit-text"}>{rpSigned(item.totals.profitRupiah)}</small>
+                        </span>
                       </button>
                     </li>
                   ))}
               </ul>
-              {data.daily.every((item) => item.totals.count === 0n) && <EmptyState>Belum ada transaksi bulan ini.</EmptyState>}
+              {data.daily.every((item) => item.totals.count === 0n) && <EmptyState>Belum ada transaksi di periode ini.</EmptyState>}
             </section>
           )}
 
@@ -112,8 +230,9 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
               onChange={setDetail}
               label="Rincian"
               options={[
-                { value: "hp", label: `Untung per HP (${data.phones.length})` },
-                { value: "service", label: `Service diambil (${data.services.length})` },
+                { value: "hp", label: `Per HP (${data.phones.length})` },
+                { value: "service", label: `Service (${data.services.length})` },
+                { value: "barang", label: `Aksesoris & digital (${data.items.length})` },
               ]}
             />
             {detail === "hp" &&
@@ -179,10 +298,47 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
                   </tbody>
                 </table>
               ))}
+            {detail === "barang" &&
+              (data.items.length === 0 ? (
+                <EmptyState>Belum ada aksesoris atau produk digital terjual di periode ini.</EmptyState>
+              ) : (
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Barang</th>
+                      <th className="num">Jumlah</th>
+                      <th className="num">Omzet</th>
+                      <th className="num">Untung</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((item) => (
+                      <tr key={`${item.kind}-${item.name}`}>
+                        <td>
+                          <strong>{item.name}</strong>
+                          <span className="muted small block">{item.kind === "digital" ? "Digital" : "Aksesoris"}</span>
+                        </td>
+                        <td className="num">{item.quantity.toString()}</td>
+                        <td className="num">{rp(item.revenueRupiah)}</td>
+                        <td className={item.profitRupiah < 0n ? "num loss-text" : "num profit-text"}>{rpSigned(item.profitRupiah)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
           </section>
         </>
       )}
-
     </div>
+  );
+}
+
+function PdfIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6" />
+      <path d="M12 12v6m-3-3 3 3 3-3" />
+    </svg>
   );
 }

@@ -47,6 +47,7 @@ import {
 } from "../domain/service";
 import { normalizePhoneNumber, optionalText, requiredText } from "../domain/text";
 import {
+  daysBetween,
   daysInJakartaMonth,
   documentNumber,
   jakartaDayKey,
@@ -243,6 +244,21 @@ export interface PhoneProfitRow {
 export interface DailyProfit {
   readonly day: string;
   readonly totals: ProfitTotals;
+}
+
+export interface PaymentTotals {
+  readonly method: PaymentMethod;
+  /** Uang masuk: nota (setelah potongan tukar tambah) + biaya service diambil. */
+  readonly amountRupiah: Rupiah;
+  readonly count: number;
+}
+
+export interface ItemSalesRow {
+  readonly kind: "aksesoris" | "digital";
+  readonly name: string;
+  readonly quantity: bigint;
+  readonly revenueRupiah: Rupiah;
+  readonly profitRupiah: Rupiah;
 }
 
 export interface PhotoOwner {
@@ -986,6 +1002,79 @@ export class KonterRepository {
     return daysInJakartaMonth(monthKey).map((day) => ({
       day,
       totals: totalsOf(byDay.get(day) ?? []),
+    }));
+  }
+
+  /** Untung per hari untuk rentang tanggal bebas, termasuk hari tanpa transaksi. */
+  async dailyProfitBetween(fromDay: string, toDay: string): Promise<readonly DailyProfit[]> {
+    const days = daysBetween(fromDay, toDay);
+    const entries = await this.profitEntries({
+      startMs: jakartaDayRange(days[0]!).startMs,
+      endMs: jakartaDayRange(days.at(-1)!).endMs,
+    });
+    const byDay = new Map<string, ProfitEntry[]>();
+    for (const entry of entries) {
+      const day = jakartaDayKey(entry.atMs);
+      const list = byDay.get(day) ?? [];
+      list.push(entry);
+      byDay.set(day, list);
+    }
+    return days.map((day) => ({ day, totals: totalsOf(byDay.get(day) ?? []) }));
+  }
+
+  /**
+   * Uang masuk per cara bayar. Nota dihitung setelah potongan tukar tambah
+   * (nota yang malah membayar pelanggan tidak dihitung); service dihitung
+   * sebesar biayanya pada hari diambil (data lama tanpa cara bayar = tunai).
+   */
+  async paymentTotals(range: TimeRange): Promise<readonly PaymentTotals[]> {
+    const totals = new Map<PaymentMethod, { amount: bigint; count: number }>(
+      (["tunai", "transfer", "qris"] as const).map((method) => [method, { amount: 0n, count: 0 }]),
+    );
+    const sales = await this.database.query(
+      `SELECT payment_method, items_total_rupiah - trade_in_credit_rupiah AS due FROM sales
+       WHERE voided_at_ms IS NULL AND sold_at_ms >= ? AND sold_at_ms < ?`,
+      [range.startMs, range.endMs],
+    );
+    for (const row of sales) {
+      const bucket = totals.get(assertPaymentMethod(readText(row, "payment_method")))!;
+      const due = readBigint(row, "due");
+      if (due > 0n) bucket.amount += due;
+      bucket.count += 1;
+    }
+    const services = await this.database.query(
+      `SELECT payment_method, total_charge_rupiah FROM service_orders
+       WHERE status = 'diambil' AND picked_up_at_ms >= ? AND picked_up_at_ms < ?`,
+      [range.startMs, range.endMs],
+    );
+    for (const row of services) {
+      const method = readOptionalText(row, "payment_method");
+      const bucket = totals.get(method === null ? "tunai" : assertPaymentMethod(method))!;
+      bucket.amount += readBigint(row, "total_charge_rupiah");
+      bucket.count += 1;
+    }
+    return [...totals].map(([method, value]) => ({ method, amountRupiah: value.amount, count: value.count }));
+  }
+
+  /** Aksesoris dan produk digital terjual, dikelompokkan per nama, terbanyak dulu. */
+  async itemSales(range: TimeRange): Promise<readonly ItemSalesRow[]> {
+    const rows = await this.database.query(
+      `SELECT l.kind, l.name, SUM(l.quantity) AS qty,
+              SUM(l.quantity * l.unit_price_rupiah) AS revenue,
+              SUM(l.quantity * (l.unit_price_rupiah - l.unit_cost_rupiah)) AS profit
+       FROM sale_lines l JOIN sales s ON s.id = l.sale_id
+       WHERE l.kind IN ('aksesoris', 'digital') AND s.voided_at_ms IS NULL
+         AND s.sold_at_ms >= ? AND s.sold_at_ms < ?
+       GROUP BY l.kind, l.name
+       ORDER BY qty DESC, revenue DESC`,
+      [range.startMs, range.endMs],
+    );
+    return rows.map((row) => ({
+      kind: readText(row, "kind") as "aksesoris" | "digital",
+      name: readText(row, "name"),
+      quantity: readBigint(row, "qty"),
+      revenueRupiah: readBigint(row, "revenue"),
+      profitRupiah: readBigint(row, "profit"),
     }));
   }
 

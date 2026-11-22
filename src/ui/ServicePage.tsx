@@ -8,6 +8,7 @@ import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./commo
 import type { PageContext } from "./context";
 import { ageLabel, dateTimeWib, digitsToRupiah, rp, rpSigned, rupiahToDigits } from "./format";
 import { serviceReceiptText, serviceStatusMessage } from "./receipts";
+import { PrintServiceButton, ServiceReceiptSheet } from "./NotaSheets";
 import { openWhatsApp, shareText } from "./whatsapp";
 
 type Filter = "semua" | Exclude<ServiceStatus, "diambil">;
@@ -133,7 +134,7 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
           }}
         />
       )}
-      {paid !== null && <ServiceDoneSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
+      {paid !== null && <ServiceReceiptSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
     </div>
   );
 }
@@ -203,43 +204,6 @@ export function ServicePaySheet({
       >
         {action.busy ? "Menyimpan…" : balance > 0n ? `Terima ${rp(balance)} & serahkan HP` : "Serahkan HP"}
       </button>
-    </Sheet>
-  );
-}
-
-/** Setelah HP diambil: kirim nota service ke pelanggan. */
-export function ServiceDoneSheet({
-  ctx,
-  order,
-  onClose,
-}: {
-  readonly ctx: PageContext;
-  readonly order: ServiceOrder;
-  readonly onClose: () => void;
-}) {
-  const text = serviceReceiptText(order, ctx.store);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <Sheet title={`Nota service ${order.number}`} onClose={onClose}>
-      <pre className="receipt-preview">{text}</pre>
-      <ErrorText error={error} />
-      <div className="button-row">
-        {order.customerPhone !== null && (
-          <button type="button" className="button whatsapp-button" onClick={() => openWhatsApp(order.customerPhone!, text)}>
-            Kirim ke WA pelanggan
-          </button>
-        )}
-        <button
-          type="button"
-          className="button button-secondary"
-          onClick={() => shareText(`Nota service ${order.number}`, text).catch(() => setError("Tidak bisa membuka menu Bagikan."))}
-        >
-          Bagikan…
-        </button>
-        <button type="button" className="button button-primary" onClick={onClose}>
-          Selesai
-        </button>
-      </div>
     </Sheet>
   );
 }
@@ -421,6 +385,7 @@ export function ServiceDetailSheet({
         >
           Kirim tanda terima
         </button>
+        {order.status === "proses" && <PrintServiceButton ctx={ctx} order={order} />}
       </div>
 
       {order.status === "proses" && closeMode === null && (

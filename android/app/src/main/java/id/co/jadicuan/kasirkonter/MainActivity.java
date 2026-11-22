@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(BluetoothPrinterPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Tombol Back Android: tutup lembar/dialog di aplikasi lebih dulu

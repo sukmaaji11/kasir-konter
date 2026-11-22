@@ -2,6 +2,7 @@ import { useState } from "react";
 import { APP_VERSION } from "../app-info";
 import { can, roleLabel } from "../domain/auth";
 import { PinCreator } from "./AccessScreens";
+import { PrinterSettingsPanel } from "./PrinterSettings";
 import { EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
 import type { StoreProfile } from "./receipts";
@@ -20,6 +21,7 @@ export function SettingsPage({
   return (
     <div className="page settings-page">
       {isOwner && <StoreProfileForm ctx={ctx} onSaved={onStoreSaved} />}
+      {isOwner && <PrinterSettingsPanel ctx={ctx} />}
       {isOwner && <UsersSection ctx={ctx} />}
 
       <section className="panel">

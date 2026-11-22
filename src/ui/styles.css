@@ -745,7 +745,7 @@ button.list-card:not(:disabled):active {
 
 .line-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(125px, 1fr));
   gap: 8px;
 }
 
@@ -2015,4 +2015,459 @@ button.list-card:not(:disabled):active {
 
 .digital-hint {
   margin-top: 10px;
+}
+
+/* ---------- Nota (gaya Kasir Kaki Lima) ---------- */
+
+.receipt-success {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.receipt-success h2 {
+  margin-top: 2px;
+  font-size: 19px;
+}
+
+.receipt-check {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border-radius: 999px;
+  background: #e2f4e8;
+  animation: splash-pop 380ms cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.receipt-check svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.receipt-meta {
+  font-size: 12px;
+}
+
+.receipt-change {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  padding: 12px;
+  border-radius: 16px;
+  color: #fff;
+  background: var(--green);
+  text-align: center;
+}
+
+.receipt-change.quiet {
+  color: var(--navy-dark);
+  background: var(--navy-soft);
+}
+
+.receipt-change.refund {
+  background: #a15c00;
+}
+
+.receipt-change span {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.85;
+}
+
+.receipt-change strong {
+  font-size: 28px;
+  letter-spacing: -0.02em;
+}
+
+.receipt-change small {
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.receipt-paper {
+  display: grid;
+  padding: 6px 14px 10px;
+  border: 1px dashed #c6d0dd;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.receipt-store {
+  display: grid;
+  justify-items: center;
+  gap: 1px;
+  padding: 8px 0 10px;
+  border-bottom: 1px dashed #dfe5ee;
+  text-align: center;
+}
+
+.receipt-store strong {
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.receipt-store span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.receipt-customer {
+  padding: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.receipt-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px dashed #e6ebf2;
+}
+
+.receipt-line > span {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.receipt-line > span strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.receipt-line small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.receipt-line > strong {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.receipt-line.minor {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.receipt-line.receipt-total {
+  border-bottom: 0;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.receipt-line.receipt-total > strong {
+  font-size: 16px;
+}
+
+.receipt-footer {
+  padding-top: 8px;
+  border-top: 1px dashed #dfe5ee;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  white-space: pre-line;
+}
+
+.receipt-share {
+  justify-content: center;
+}
+
+.print-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.inline-note {
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: var(--navy-dark);
+  background: var(--navy-soft);
+  font-size: 13px;
+}
+
+.inline-note.success {
+  color: #17643a;
+  background: #e2f4e8;
+}
+
+/* ---------- Uang diterima ---------- */
+
+.cash-row {
+  display: grid;
+  gap: 6px;
+}
+
+.cash-row label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cash-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.change-note {
+  color: var(--green);
+  font-size: 14px;
+}
+
+.change-note.short {
+  color: var(--red);
+}
+
+/* ---------- Laporan: periode, export, cara bayar ---------- */
+
+.range-filter {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.range-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.range-chip {
+  min-height: 36px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: #34404f;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.range-chip.active {
+  border-color: var(--navy);
+  color: #fff;
+  background: var(--navy);
+}
+
+.range-dates {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.range-dates label,
+.range-month {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.range-summary {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.export-row .button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pay-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.pay-total {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f4f6f9;
+}
+
+.pay-total span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pay-total strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.bar-value {
+  display: grid;
+  justify-items: end;
+}
+
+.bar-value small {
+  font-size: 11px;
+}
+
+/* ---------- Printer ---------- */
+
+.printer-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #e2f4e8;
+}
+
+.printer-status.empty {
+  background: #f4f6f9;
+}
+
+.printer-status-icon {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 10px;
+  color: var(--navy);
+  background: #fff;
+}
+
+.printer-status div {
+  display: grid;
+}
+
+.printer-status small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.printer-steps {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.printer-list {
+  display: grid;
+  gap: 6px;
+}
+
+.printer-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+}
+
+.printer-option span {
+  display: grid;
+}
+
+.printer-option small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.printer-option.selected {
+  border-color: var(--navy);
+  background: var(--navy-soft);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.toggle-row input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+}
+
+.toggle-row span {
+  display: grid;
+  gap: 2px;
+}
+
+/* ---------- Kasir Digital: panduan saat kosong ---------- */
+
+.empty-guide {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 20px 16px;
+  border: 1px dashed #a9bdd6;
+  border-radius: 16px;
+  background: var(--surface);
+  text-align: center;
+}
+
+.empty-guide-icon {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 16px;
+  background: var(--navy-soft);
+  font-size: 28px;
+}
+
+.empty-guide h2 {
+  font-size: 16px;
+}
+
+.empty-guide p {
+  max-width: 460px;
+}
+
+.empty-guide-steps {
+  display: grid;
+  max-width: 460px;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+  text-align: left;
+}
+
+.empty-guide-alt {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid #eef1f5;
 }

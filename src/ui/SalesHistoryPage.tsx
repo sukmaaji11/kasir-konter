@@ -5,7 +5,7 @@ import { jakartaDayRange } from "../domain/time";
 import { EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
 import { dateTimeWib, dayLabel, rp, rpSigned, todayKey } from "./format";
-import { ReceiptSheet } from "./SalePage";
+import { SaleReceiptSheet } from "./NotaSheets";
 
 /** Daftar nota per hari: buka/kirim ulang nota, Owner bisa membatalkan. */
 export function SalesHistoryPage({ ctx }: { readonly ctx: PageContext }) {
@@ -56,7 +56,7 @@ export function SalesHistoryPage({ ctx }: { readonly ctx: PageContext }) {
           ))}
         </ul>
       )}
-      {open !== null && <ReceiptSheet ctx={ctx} sale={open} onClose={() => setOpen(null)} />}
+      {open !== null && <SaleReceiptSheet ctx={ctx} sale={open} fresh={false} onClose={() => setOpen(null)} />}
       {voiding !== null && (
         <VoidSaleSheet ctx={ctx} sale={voiding} onClose={() => setVoiding(null)} />
       )}

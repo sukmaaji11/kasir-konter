@@ -53,6 +53,9 @@ npm run build
 - `src/application`: login PIN (Owner/karyawan) dan lisensi offline.
 - `src/licensing`: format kode aktivasi `KKO1`. Kode Kasir Kaki Lima (`KKL1`)
   tidak berlaku di sini.
+- `src/printing`: struk thermal ESC/POS 58/80 mm + port printer Bluetooth
+  (plugin native `BluetoothPrinterPlugin.java`, diambil dari Kasir Kaki Lima).
+- `src/reports`: penulis PDF kecil tanpa library + laporan untung A4.
 - `src/ui`: Beranda (ringkasan hari ini, grafik 7 hari, perlu perhatian),
   Kasir (Barang · Digital · Service), Stok HP, Service, Aksesoris, Produk
   digital, Riwayat nota, Laporan untung, Pengaturan.
@@ -105,9 +108,12 @@ APK uji: `android/app/build/outputs/apk/debug/app-debug.apk`, dengan ID
   foto produk (skema v3).
 - Revisi Owner 2: Beranda lebih lengkap, Kasir untuk pelunasan service,
   layanan digital (skema v4).
+- Revisi Owner 3: Laporan dengan periode (hari ini, kemarin, 7 hari, bulan
+  ini/lalu, pilih bulan, rentang tanggal) + export PDF, nota gaya Kasir Kaki
+  Lima (uang diterima/kembalian), cetak nota Bluetooth, panduan Kasir Digital
+  saat daftar kosong.
 
 Berikutnya:
 1. Cadangan/pindah HP (ekspor/impor file) dan pengingat backup.
-2. Cetak nota thermal Bluetooth (dari Kasir Kaki Lima).
-3. Ikon aplikasi dan splash Android sendiri (sekarang masih bawaan Capacitor).
-4. Halaman Admin di browser untuk membuat kode aktivasi.
+2. Ikon aplikasi dan splash Android sendiri (sekarang masih bawaan Capacitor).
+3. Halaman Admin di browser untuk membuat kode aktivasi.
