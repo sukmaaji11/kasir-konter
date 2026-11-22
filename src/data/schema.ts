@@ -1,5 +1,5 @@
 export const DATABASE_NAME = "kasir_konter";
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type StoredValue = string | number | null;
 export type StoredRow = Record<string, StoredValue>;
@@ -154,4 +154,66 @@ export const SCHEMA_VERSION_3_STATEMENTS: readonly string[] = [
     created_at_ms INTEGER NOT NULL
   )`,
   `CREATE INDEX photos_owner ON photos (owner_type, owner_id, position)`,
+];
+
+/**
+ * Skema versi 4:
+ *  - Produk digital (pulsa, kuota, kartu perdana, top up, token). Kartu
+ *    perdana/voucher fisik punya stok; pulsa dan top up tidak.
+ *  - Baris nota jenis "digital" dengan nomor tujuan. SQLite tidak bisa
+ *    mengubah CHECK, jadi tabel sale_lines dibangun ulang (isi disalin).
+ *  - Metode bayar pelunasan service (dicatat saat HP diambil di Kasir).
+ */
+export const SCHEMA_VERSION_4_STATEMENTS: readonly string[] = [
+  `CREATE TABLE digital_products (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL CHECK (category IN ('pulsa', 'kuota', 'perdana', 'topup', 'token', 'lainnya')),
+    cost_rupiah INTEGER NOT NULL CHECK (cost_rupiah >= 0),
+    price_rupiah INTEGER NOT NULL CHECK (price_rupiah >= 0),
+    track_stock INTEGER NOT NULL CHECK (track_stock IN (0, 1)),
+    stock_quantity INTEGER NOT NULL DEFAULT 0 CHECK (stock_quantity >= 0),
+    created_at_ms INTEGER NOT NULL,
+    archived_at_ms INTEGER
+  )`,
+  `CREATE TABLE digital_restocks (
+    id TEXT PRIMARY KEY,
+    digital_product_id TEXT NOT NULL REFERENCES digital_products (id),
+    restocked_at_ms INTEGER NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_cost_rupiah INTEGER NOT NULL CHECK (unit_cost_rupiah >= 0)
+  )`,
+  `CREATE TABLE sale_lines_v4 (
+    id TEXT PRIMARY KEY,
+    sale_id TEXT NOT NULL REFERENCES sales (id),
+    position INTEGER NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('hp', 'aksesoris', 'digital')),
+    phone_unit_id TEXT REFERENCES phone_units (id),
+    accessory_id TEXT REFERENCES accessories (id),
+    digital_product_id TEXT REFERENCES digital_products (id),
+    target TEXT,
+    name TEXT NOT NULL,
+    quantity INTEGER NOT NULL CHECK (quantity > 0),
+    unit_price_rupiah INTEGER NOT NULL CHECK (unit_price_rupiah >= 0),
+    unit_cost_rupiah INTEGER NOT NULL CHECK (unit_cost_rupiah >= 0),
+    CHECK (
+      (kind = 'hp' AND phone_unit_id IS NOT NULL AND accessory_id IS NULL
+        AND digital_product_id IS NULL AND quantity = 1)
+      OR (kind = 'aksesoris' AND accessory_id IS NOT NULL AND phone_unit_id IS NULL
+        AND digital_product_id IS NULL)
+      OR (kind = 'digital' AND phone_unit_id IS NULL AND accessory_id IS NULL)
+    ),
+    UNIQUE (sale_id, position)
+  )`,
+  `INSERT INTO sale_lines_v4
+    (id, sale_id, position, kind, phone_unit_id, accessory_id, name, quantity,
+     unit_price_rupiah, unit_cost_rupiah)
+   SELECT id, sale_id, position, kind, phone_unit_id, accessory_id, name, quantity,
+     unit_price_rupiah, unit_cost_rupiah
+   FROM sale_lines`,
+  `DROP TABLE sale_lines`,
+  `ALTER TABLE sale_lines_v4 RENAME TO sale_lines`,
+  `CREATE INDEX sale_lines_phone ON sale_lines (phone_unit_id)`,
+  `ALTER TABLE service_orders ADD COLUMN payment_method TEXT
+    CHECK (payment_method IS NULL OR payment_method IN ('tunai', 'transfer', 'qris'))`,
 ];

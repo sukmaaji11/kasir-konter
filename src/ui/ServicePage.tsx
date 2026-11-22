@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ServiceOrder } from "../data/repository";
 import { can } from "../domain/auth";
+import type { PaymentMethod } from "../domain/sales";
 import { SERVICE_STATUS_LABELS, type ServiceStatus } from "../domain/service";
 import { CurrencyInput } from "./CurrencyInput";
 import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
@@ -11,7 +12,13 @@ import { openWhatsApp, shareText } from "./whatsapp";
 
 type Filter = "semua" | Exclude<ServiceStatus, "diambil">;
 
-const STATUS_BADGE: Readonly<Record<ServiceStatus, string>> = {
+export const PAYMENT_OPTIONS = [
+  { value: "tunai", label: "Tunai" },
+  { value: "transfer", label: "Transfer" },
+  { value: "qris", label: "QRIS" },
+] as const;
+
+export const STATUS_BADGE: Readonly<Record<ServiceStatus, string>> = {
   proses: "badge badge-amber",
   selesai: "badge badge-green",
   batal: "badge badge-red",
@@ -24,6 +31,8 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
   const [creating, setCreating] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [paying, setPaying] = useState<ServiceOrder | null>(null);
+  const [paid, setPaid] = useState<ServiceOrder | null>(null);
 
   const all = orders.data ?? [];
   const count = (status: ServiceStatus) => all.filter((order) => order.status === status).length;
@@ -109,14 +118,133 @@ export function ServicePage({ ctx }: { readonly ctx: PageContext }) {
           }}
         />
       )}
-      {selected !== null && (
-        <ServiceDetailSheet ctx={ctx} order={selected} onClose={() => setSelectedId(null)} />
+      {selected !== null && paying === null && (
+        <ServiceDetailSheet ctx={ctx} order={selected} onClose={() => setSelectedId(null)} onPay={() => setPaying(selected)} />
       )}
+      {paying !== null && (
+        <ServicePaySheet
+          ctx={ctx}
+          order={paying}
+          onClose={() => setPaying(null)}
+          onPaid={(order) => {
+            setPaying(null);
+            setSelectedId(null);
+            setPaid(order);
+          }}
+        />
+      )}
+      {paid !== null && <ServiceDoneSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
     </div>
   );
 }
 
-function NewServiceSheet({
+/** Bayar sisa service dan serahkan HP. Dipakai di halaman Service dan Kasir. */
+export function ServicePaySheet({
+  ctx,
+  order,
+  onClose,
+  onPaid,
+}: {
+  readonly ctx: PageContext;
+  readonly order: ServiceOrder;
+  readonly onClose: () => void;
+  readonly onPaid: (order: ServiceOrder) => void;
+}) {
+  const [payment, setPayment] = useState<PaymentMethod>("tunai");
+  const action = useAction();
+  const balance = order.balanceDueRupiah ?? 0n;
+  return (
+    <Sheet title={`Bayar service ${order.number}`} onClose={onClose}>
+      <div className="pay-service-head">
+        <strong>{order.customerName}</strong>
+        <span className="muted">{order.device} · {order.complaint}</span>
+        <span className={STATUS_BADGE[order.status]}>{SERVICE_STATUS_LABELS[order.status]}</span>
+      </div>
+      <dl className="totals">
+        <div>
+          <dt>{order.status === "batal" ? "Biaya cek" : "Biaya service"}</dt>
+          <dd>{rp(order.totalChargeRupiah ?? 0n)}</dd>
+        </div>
+        {order.depositRupiah > 0n && (
+          <div>
+            <dt>DP sudah dibayar</dt>
+            <dd>−{rp(order.depositRupiah)}</dd>
+          </div>
+        )}
+        <div className="totals-main">
+          <dt>{balance >= 0n ? "Sisa bayar" : "DP dikembalikan"}</dt>
+          <dd>{rp(balance >= 0n ? balance : -balance)}</dd>
+        </div>
+        {can(ctx.user, "viewCostAndProfit") && order.profitRupiah !== null && (
+          <div className={order.profitRupiah >= 0n ? "profit-row" : "profit-row loss"}>
+            <dt>Untung</dt>
+            <dd>{rpSigned(order.profitRupiah)}</dd>
+          </div>
+        )}
+      </dl>
+      {balance > 0n && (
+        <div className="pay-row">
+          <span className="field-label">Bayar pakai</span>
+          <Chips value={payment} onChange={setPayment} options={PAYMENT_OPTIONS} label="Metode bayar" />
+        </div>
+      )}
+      <ErrorText error={action.error} />
+      <button
+        type="button"
+        className="button button-primary button-block button-large"
+        disabled={action.busy}
+        onClick={() =>
+          void action.run(async () => {
+            const done = await ctx.repo.pickUpService(order.id, payment);
+            ctx.changed();
+            onPaid(done);
+          })
+        }
+      >
+        {action.busy ? "Menyimpan…" : balance > 0n ? `Terima ${rp(balance)} & serahkan HP` : "Serahkan HP"}
+      </button>
+    </Sheet>
+  );
+}
+
+/** Setelah HP diambil: kirim nota service ke pelanggan. */
+export function ServiceDoneSheet({
+  ctx,
+  order,
+  onClose,
+}: {
+  readonly ctx: PageContext;
+  readonly order: ServiceOrder;
+  readonly onClose: () => void;
+}) {
+  const text = serviceReceiptText(order, ctx.store);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Sheet title={`Nota service ${order.number}`} onClose={onClose}>
+      <pre className="receipt-preview">{text}</pre>
+      <ErrorText error={error} />
+      <div className="button-row">
+        {order.customerPhone !== null && (
+          <button type="button" className="button whatsapp-button" onClick={() => openWhatsApp(order.customerPhone!, text)}>
+            Kirim ke WA pelanggan
+          </button>
+        )}
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => shareText(`Nota service ${order.number}`, text).catch(() => setError("Tidak bisa membuka menu Bagikan."))}
+        >
+          Bagikan…
+        </button>
+        <button type="button" className="button button-primary" onClick={onClose}>
+          Selesai
+        </button>
+      </div>
+    </Sheet>
+  );
+}
+
+export function NewServiceSheet({
   ctx,
   onClose,
   onCreated,
@@ -211,21 +339,22 @@ function NewServiceSheet({
 
 type CloseMode = "selesai" | "batal" | null;
 
-function ServiceDetailSheet({
+export function ServiceDetailSheet({
   ctx,
   order,
   onClose,
+  onPay,
 }: {
   readonly ctx: PageContext;
   readonly order: ServiceOrder;
   readonly onClose: () => void;
+  readonly onPay: () => void;
 }) {
   const showProfit = can(ctx.user, "viewCostAndProfit");
   const [closeMode, setCloseMode] = useState<CloseMode>(null);
   const [charge, setCharge] = useState(rupiahToDigits(order.totalChargeRupiah ?? order.estimateRupiah));
   const [partsCost, setPartsCost] = useState(order.partsCostRupiah > 0n ? order.partsCostRupiah.toString() : "");
   const [partsNote, setPartsNote] = useState(order.partsNote ?? "");
-  const [confirmPickup, setConfirmPickup] = useState(false);
   const action = useAction();
 
   const receipt = serviceReceiptText(order, ctx.store);
@@ -339,55 +468,24 @@ function ServiceDetailSheet({
       )}
 
       {(order.status === "selesai" || order.status === "batal") && (
-        <>
-          {!confirmPickup ? (
-            <div className="button-row">
-              <button type="button" className="button button-primary" onClick={() => setConfirmPickup(true)}>
-                HP diambil pelanggan
-              </button>
-              <button
-                type="button"
-                className="button button-quiet"
-                disabled={action.busy}
-                onClick={() =>
-                  void action.run(async () => {
-                    await ctx.repo.reopenService(order.id);
-                    ctx.changed();
-                  })
-                }
-              >
-                Kerjakan ulang
-              </button>
-            </div>
-          ) : (
-            <div className="confirm-box">
-              <p>
-                {(order.balanceDueRupiah ?? 0n) >= 0n
-                  ? <>Terima pelunasan <strong>{rp(order.balanceDueRupiah ?? 0n)}</strong> dan serahkan HP?</>
-                  : <>Kembalikan DP <strong>{rp(-(order.balanceDueRupiah ?? 0n))}</strong> dan serahkan HP?</>}
-              </p>
-              <div className="button-row">
-                <button
-                  type="button"
-                  className="button button-primary"
-                  disabled={action.busy}
-                  onClick={() =>
-                    void action.run(async () => {
-                      await ctx.repo.pickUpService(order.id);
-                      ctx.changed();
-                      onClose();
-                    })
-                  }
-                >
-                  Ya, sudah diambil
-                </button>
-                <button type="button" className="button button-quiet" onClick={() => setConfirmPickup(false)}>
-                  Belum
-                </button>
-              </div>
-            </div>
-          )}
-        </>
+        <div className="button-row">
+          <button type="button" className="button button-primary" onClick={onPay}>
+            Bayar & serahkan HP
+          </button>
+          <button
+            type="button"
+            className="button button-quiet"
+            disabled={action.busy}
+            onClick={() =>
+              void action.run(async () => {
+                await ctx.repo.reopenService(order.id);
+                ctx.changed();
+              })
+            }
+          >
+            Kerjakan ulang
+          </button>
+        </div>
       )}
       <ErrorText error={action.error} />
     </Sheet>

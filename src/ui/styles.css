@@ -1730,3 +1730,289 @@ button.list-card:not(:disabled):active {
   50% { transform: translateX(7px); }
   75% { transform: translateX(-4px); }
 }
+
+/* ---------- Beranda: rincian per lini, grafik 7 hari, perhatian ---------- */
+
+.line-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.line-chip {
+  display: grid;
+  gap: 1px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  font-size: 11px;
+}
+
+.line-chip-head {
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.line-chip strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.week-chart {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  align-items: end;
+  height: 132px;
+}
+
+.week-col {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+  gap: 3px;
+  justify-items: center;
+}
+
+.week-value {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.week-bar-track {
+  display: flex;
+  width: 100%;
+  max-width: 34px;
+  align-items: flex-end;
+}
+
+.week-bar {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: flex-end;
+  overflow: hidden;
+  border-radius: 6px 6px 2px 2px;
+  background: #b9cbe2;
+}
+
+.week-col.today .week-bar {
+  background: var(--navy);
+}
+
+.week-bar-profit {
+  width: 100%;
+  background: var(--amber);
+}
+
+.week-day {
+  color: var(--muted);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.week-col.today .week-day {
+  color: var(--navy);
+  font-weight: 800;
+}
+
+.week-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legend-dot.omzet {
+  background: var(--navy);
+}
+
+.legend-dot.untung {
+  margin-left: 8px;
+  background: var(--amber);
+}
+
+.mini-stats.four {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.mini-stat.warn strong {
+  color: #a15c00;
+}
+
+.attention-list,
+.activity-list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attention-row,
+.activity-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border: 0;
+  border-bottom: 1px solid #eef1f5;
+  background: none;
+  text-align: left;
+}
+
+.attention-list li:last-child .attention-row,
+.activity-list li:last-child .activity-row {
+  border-bottom: 0;
+}
+
+.attention-main {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 1px;
+}
+
+.attention-main strong {
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attention-side {
+  flex: 0 0 auto;
+  font-size: 13px;
+}
+
+.attention-more {
+  padding: 6px 2px;
+}
+
+@media (max-width: 460px) {
+  .line-strip,
+  .mini-stats.four {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ---------- Kasir: bagian Barang / Digital / Service ---------- */
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #e3e8ef;
+}
+
+.segment {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.segment.active {
+  color: var(--navy-dark);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(20, 40, 70, 0.16);
+}
+
+.segment-badge {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--red);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.manual-card {
+  border-style: dashed;
+  border-color: #a9bdd6;
+  background: #f7f9fc;
+}
+
+.digital-hint .link-like {
+  color: var(--navy);
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.list-card-side .link-like {
+  color: var(--navy);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pay-card {
+  align-items: stretch;
+}
+
+.list-card-main.plain {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+}
+
+.pay-card-side {
+  display: grid;
+  flex: 0 0 auto;
+  justify-items: end;
+  align-content: center;
+  gap: 2px;
+}
+
+.pay-card-side strong {
+  font-size: 15px;
+}
+
+.pay-card-side .button {
+  min-height: 34px;
+  margin-top: 4px;
+  padding: 4px 16px;
+}
+
+.pay-service-head {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+}
+
+.product-grid.compact {
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+}
+
+.product-grid.compact .product-card {
+  padding: 8px 8px 10px;
+}
+
+.digital-hint {
+  margin-top: 10px;
+}

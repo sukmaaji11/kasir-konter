@@ -3,6 +3,7 @@ import {
   SCHEMA_VERSION_1_STATEMENTS,
   SCHEMA_VERSION_2_STATEMENTS,
   SCHEMA_VERSION_3_STATEMENTS,
+  SCHEMA_VERSION_4_STATEMENTS,
 } from "./schema";
 import type { SqlDatabaseDriver } from "./driver";
 
@@ -15,6 +16,7 @@ export const DATABASE_MIGRATIONS: readonly Migration[] = [
   { version: 1, statements: SCHEMA_VERSION_1_STATEMENTS },
   { version: 2, statements: SCHEMA_VERSION_2_STATEMENTS },
   { version: 3, statements: SCHEMA_VERSION_3_STATEMENTS },
+  { version: 4, statements: SCHEMA_VERSION_4_STATEMENTS },
 ];
 
 export async function migrateDatabase(database: SqlDatabaseDriver): Promise<void> {

@@ -52,6 +52,30 @@ async function seed(repo: KonterRepository, setClock: (ms: number) => void): Pro
   const battery = await repo.createServiceOrder({ customerName: "Rina", device: "Oppo A5 2020", complaint: "Baterai cepat habis", estimateRupiah: 200_000n });
   await repo.finishService(battery.id, { totalChargeRupiah: 200_000n, partsCostRupiah: 95_000n });
   await repo.pickUpService(battery.id);
+  const pulsa10 = await repo.addDigitalProduct({ name: "Pulsa Telkomsel 10rb", category: "pulsa", costRupiah: 10_250n, priceRupiah: 12_000n });
+  await repo.addDigitalProduct({ name: "Pulsa Indosat 25rb", category: "pulsa", costRupiah: 24_900n, priceRupiah: 27_000n });
+  await repo.addDigitalProduct({ name: "XL 10GB 30 hari", category: "kuota", costRupiah: 47_000n, priceRupiah: 55_000n });
+  const perdana = await repo.addDigitalProduct({ name: "Perdana Tri 0K", category: "perdana", costRupiah: 5_000n, priceRupiah: 10_000n, initialStock: 2n });
+  await repo.addDigitalProduct({ name: "Token PLN 50rb", category: "token", costRupiah: 50_800n, priceRupiah: 53_000n });
+  await repo.addDigitalProduct({ name: "Top up DANA 100rb", category: "topup", costRupiah: 100_500n, priceRupiah: 103_000n });
+  for (const [daysAgo, amount] of [[5, 3n], [4, 1n], [3, 4n], [1, 2n]] as const) {
+    setClock(now - daysAgo * 24 * HOUR);
+    await repo.recordSale({
+      lines: [
+        { kind: "digital", digitalProductId: pulsa10.id, target: "081234500000", quantity: amount, unitPriceRupiah: 12_000n },
+        { kind: "aksesoris", accessoryId: glass.id, quantity: 1n },
+      ],
+      paymentMethod: "tunai",
+    });
+  }
+  setClock(now - 90 * 60_000);
+  await repo.recordSale({
+    lines: [
+      { kind: "digital", digitalProductId: pulsa10.id, target: "085712345678", unitPriceRupiah: 12_000n },
+      { kind: "digital", digitalProductId: perdana.id, quantity: 1n, unitPriceRupiah: 10_000n },
+    ],
+    paymentMethod: "qris",
+  });
   setClock(now - HOUR);
   await repo.createServiceOrder({ customerName: "Dodi", customerPhone: "085712345678", device: "Redmi Note 9", complaint: "Mati total setelah jatuh ke air" });
   setClock(now);

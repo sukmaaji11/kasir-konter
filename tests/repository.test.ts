@@ -3,7 +3,12 @@ import { DomainError } from "../src/domain/errors";
 import type { PhoneIntakeInput } from "../src/domain/phones";
 import { readSchemaVersion } from "../src/data/migrations";
 import { KonterRepository } from "../src/data/repository";
-import { SCHEMA_VERSION } from "../src/data/schema";
+import {
+  SCHEMA_VERSION,
+  SCHEMA_VERSION_1_STATEMENTS,
+  SCHEMA_VERSION_2_STATEMENTS,
+  SCHEMA_VERSION_3_STATEMENTS,
+} from "../src/data/schema";
 import { createSqlJsDriver } from "./support/sqljs-driver";
 
 /** 22 Nov 2026 10:00 WIB. */
@@ -406,5 +411,121 @@ describe("foto produk", () => {
     await expect(
       repo.addPhoto({ type: "phone", id: unit.id }, { thumbDataUrl: "data:image/png;base64,x", fullDataUrl: "data:image/png;base64,x" }),
     ).rejects.toThrow("Format foto");
+  });
+});
+
+describe("layanan digital", () => {
+  it("jual pulsa, perdana, dan transaksi manual dalam satu nota; untung masuk lini Digital", async () => {
+    const pulsa = await repo.addDigitalProduct({ name: "Pulsa Telkomsel 10rb", category: "pulsa", costRupiah: 10_250n, priceRupiah: 12_000n });
+    const perdana = await repo.addDigitalProduct({ name: "Perdana XL 0K", category: "perdana", costRupiah: 5_000n, priceRupiah: 10_000n, initialStock: 3n });
+    expect(pulsa.tracksStock).toBe(false);
+    expect(perdana.tracksStock).toBe(true);
+
+    const sale = await repo.recordSale({
+      lines: [
+        { kind: "digital", digitalProductId: pulsa.id, target: "081234567890", unitPriceRupiah: 12_000n },
+        // modal pulsa hari ini naik: boleh diisi saat jual
+        { kind: "digital", digitalProductId: pulsa.id, target: "085600001111", unitPriceRupiah: 12_000n, unitCostRupiah: 10_400n },
+        { kind: "digital", digitalProductId: perdana.id, quantity: 2n, unitPriceRupiah: 10_000n },
+        { kind: "digital", name: "Top up DANA 50rb", target: "081299990000", unitPriceRupiah: 52_000n, unitCostRupiah: 50_500n },
+      ],
+      paymentMethod: "qris",
+    });
+    expect(sale.lines.map((line) => line.target)).toEqual(["081234567890", "085600001111", null, "081299990000"]);
+    expect(sale.lines[3]?.digitalProductId).toBeNull();
+    expect(sale.summary.itemsTotalRupiah).toBe(96_000n);
+    // 1.750 + 1.600 + 10.000 + 1.500
+    expect(sale.summary.profitRupiah).toBe(14_850n);
+
+    const products = await repo.listDigitalProducts();
+    expect(products.find((item) => item.id === perdana.id)?.stockQuantity).toBe(1n);
+    expect(products.find((item) => item.id === pulsa.id)?.stockQuantity).toBe(0n);
+
+    const today = await repo.dayProfit("2026-11-22");
+    expect(today.byLine.digital.profitRupiah).toBe(14_850n);
+    expect(today.byLine.digital.count).toBe(5n);
+
+    await repo.voidSale(sale.id, "Salah input");
+    expect((await repo.listDigitalProducts()).find((item) => item.id === perdana.id)?.stockQuantity).toBe(3n);
+    expect((await repo.listDigitalProducts()).find((item) => item.id === pulsa.id)?.stockQuantity).toBe(0n);
+  });
+
+  it("menolak perdana melebihi stok dan transaksi manual tanpa modal", async () => {
+    const perdana = await repo.addDigitalProduct({ name: "Perdana Tri", category: "perdana", costRupiah: 5_000n, priceRupiah: 10_000n, initialStock: 1n });
+    await expect(
+      repo.recordSale({
+        lines: [{ kind: "digital", digitalProductId: perdana.id, quantity: 2n, unitPriceRupiah: 10_000n }],
+        paymentMethod: "tunai",
+      }),
+    ).rejects.toThrow("tinggal 1");
+    await expect(
+      repo.recordSale({
+        lines: [{ kind: "digital", name: "Token PLN 20rb", unitPriceRupiah: 22_500n }],
+        paymentMethod: "tunai",
+      }),
+    ).rejects.toThrow("harga modal");
+  });
+
+  it("tambah stok perdana, ubah harga, dan hapus dari daftar", async () => {
+    const perdana = await repo.addDigitalProduct({ name: "Perdana IM3", category: "perdana", costRupiah: 5_000n, priceRupiah: 10_000n });
+    const restocked = await repo.restockDigitalProduct(perdana.id, 10n, 4_500n);
+    expect(restocked.stockQuantity).toBe(10n);
+    expect(restocked.costRupiah).toBe(4_500n);
+    const updated = await repo.updateDigitalProduct(perdana.id, { name: "Perdana IM3 Freedom", costRupiah: 4_500n, priceRupiah: 12_000n });
+    expect(updated.priceRupiah).toBe(12_000n);
+    const pulsa = await repo.addDigitalProduct({ name: "Pulsa 5rb", category: "pulsa", costRupiah: 5_200n, priceRupiah: 7_000n });
+    await expect(repo.restockDigitalProduct(pulsa.id, 1n, 5_200n)).rejects.toThrow("tidak memakai stok");
+    await repo.archiveDigitalProduct(pulsa.id);
+    expect((await repo.listDigitalProducts()).map((item) => item.name)).toEqual(["Perdana IM3 Freedom"]);
+  });
+});
+
+describe("pelunasan service", () => {
+  it("mencatat metode bayar saat HP diambil", async () => {
+    const order = await repo.createServiceOrder({ customerName: "Andi", device: "iPhone XR", complaint: "LCD", depositRupiah: 100_000n });
+    expect(order.paymentMethod).toBeNull();
+    await repo.finishService(order.id, { totalChargeRupiah: 600_000n, partsCostRupiah: 380_000n });
+    const picked = await repo.pickUpService(order.id, "transfer");
+    expect(picked.status).toBe("diambil");
+    expect(picked.paymentMethod).toBe("transfer");
+  });
+});
+
+describe("migrasi v3 ke v4", () => {
+  it("menyalin baris nota lama saat tabel sale_lines dibangun ulang", async () => {
+    const opened = await createSqlJsDriver();
+    const driver = opened.driver;
+    const statements = [...SCHEMA_VERSION_1_STATEMENTS, ...SCHEMA_VERSION_2_STATEMENTS, ...SCHEMA_VERSION_3_STATEMENTS];
+    for (const statement of statements) await driver.execute(statement);
+    await driver.execute("PRAGMA user_version = 3");
+    await driver.run(
+      `INSERT INTO accessories (id, name, cost_rupiah, price_rupiah, stock_quantity, created_at_ms)
+       VALUES ('a1', 'Casing', 10000, 35000, 4, 1)`,
+    );
+    await driver.run(
+      `INSERT INTO sales (id, number, sold_at_ms, items_total_rupiah, payment_method)
+       VALUES ('s1', 'J-20261121-001', ${START - 24 * HOUR}, 70000, 'tunai')`,
+    );
+    await driver.run(
+      `INSERT INTO sale_lines (id, sale_id, position, kind, accessory_id, name, quantity, unit_price_rupiah, unit_cost_rupiah)
+       VALUES ('l1', 's1', 0, 'aksesoris', 'a1', 'Casing', 2, 35000, 10000)`,
+    );
+    await driver.run(
+      `INSERT INTO service_orders (id, number, received_at_ms, customer_name, device, complaint, status)
+       VALUES ('o1', 'S-20261121-001', 1, 'Rina', 'Oppo', 'Baterai', 'proses')`,
+    );
+
+    const migrated = new KonterRepository(driver, { now: () => START });
+    await migrated.initialize();
+    expect(await readSchemaVersion(driver)).toBe(SCHEMA_VERSION);
+    const sale = await migrated.getSale("s1");
+    expect(sale?.lines).toHaveLength(1);
+    expect(sale?.lines[0]?.target).toBeNull();
+    expect(sale?.summary.profitRupiah).toBe(50_000n);
+    expect((await migrated.getService("o1"))?.paymentMethod).toBeNull();
+    // void nota lama tetap mengembalikan stok
+    await migrated.voidSale("s1", "uji");
+    expect((await migrated.listAccessories())[0]?.stockQuantity).toBe(6n);
+    opened.close();
   });
 });

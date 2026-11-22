@@ -2,7 +2,7 @@ import { DomainError } from "./errors";
 import { assertNonNegativeRupiah, assertPositiveQuantity, sumRupiah, type Rupiah } from "./money";
 
 export type PaymentMethod = "tunai" | "transfer" | "qris";
-export type SaleLineKind = "hp" | "aksesoris";
+export type SaleLineKind = "hp" | "aksesoris" | "digital";
 
 export const PAYMENT_METHODS: readonly PaymentMethod[] = ["tunai", "transfer", "qris"];
 

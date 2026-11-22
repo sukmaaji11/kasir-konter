@@ -1,4 +1,10 @@
 import type { StoredUser, UserRole } from "../domain/auth";
+import {
+  assertDigitalCategory,
+  DIGITAL_CATEGORIES,
+  defaultTracksStock,
+  type DigitalCategory,
+} from "../domain/digital";
 import { DomainError } from "../domain/errors";
 import {
   assertNonNegativeRupiah,
@@ -97,8 +103,43 @@ export interface AccessoryInput {
   readonly initialStock?: bigint;
 }
 
+export interface DigitalProduct {
+  readonly id: string;
+  readonly name: string;
+  readonly category: DigitalCategory;
+  readonly costRupiah: Rupiah;
+  readonly priceRupiah: Rupiah;
+  /** Kartu perdana/voucher fisik: stok dihitung. Pulsa/top up: tidak. */
+  readonly tracksStock: boolean;
+  readonly stockQuantity: bigint;
+  readonly createdAtMs: number;
+  readonly archivedAtMs: number | null;
+}
+
+export interface DigitalProductInput {
+  readonly name: string;
+  readonly category: DigitalCategory;
+  readonly costRupiah: Rupiah;
+  readonly priceRupiah: Rupiah;
+  /** Kosong = ikut kategori (perdana pakai stok). */
+  readonly tracksStock?: boolean;
+  readonly initialStock?: bigint;
+}
+
 export type SaleLineInput =
   | { readonly kind: "hp"; readonly phoneUnitId: string; readonly priceRupiah: Rupiah }
+  | {
+      readonly kind: "digital";
+      /** Kosong = transaksi manual (nama dan modal wajib diisi). */
+      readonly digitalProductId?: string | null;
+      readonly name?: string | null;
+      /** Nomor HP / ID akun / no. meter tujuan. */
+      readonly target?: string | null;
+      readonly quantity?: bigint;
+      readonly unitPriceRupiah: Rupiah;
+      /** Kosong = modal produk saat ini. Wajib untuk transaksi manual. */
+      readonly unitCostRupiah?: Rupiah | null;
+    }
   | {
       readonly kind: "aksesoris";
       readonly accessoryId: string;
@@ -126,6 +167,8 @@ export interface SaleLineRecord extends SaleLineSnapshot {
   readonly position: number;
   readonly phoneUnitId: string | null;
   readonly accessoryId: string | null;
+  readonly digitalProductId: string | null;
+  readonly target: string | null;
 }
 
 export interface SaleRecord {
@@ -175,6 +218,8 @@ export interface ServiceOrder {
   readonly partsNote: string | null;
   readonly finishedAtMs: number | null;
   readonly pickedUpAtMs: number | null;
+  /** Cara pelunasan saat HP diambil (null untuk data lama). */
+  readonly paymentMethod: PaymentMethod | null;
   /** Untung jika biaya sudah ditentukan. */
   readonly profitRupiah: Rupiah | null;
   /** Sisa bayar saat diambil (biaya − DP), jika biaya sudah ditentukan. */
@@ -393,6 +438,102 @@ export class KonterRepository {
     return rows.map(readAccessory);
   }
 
+  // ----- Produk digital ---------------------------------------------------
+
+  async addDigitalProduct(input: DigitalProductInput): Promise<DigitalProduct> {
+    const name = requiredText(input.name, "Nama produk", 120);
+    const category = assertDigitalCategory(input.category);
+    const cost = assertNonNegativeRupiah(input.costRupiah, "Harga modal");
+    const price = assertNonNegativeRupiah(input.priceRupiah, "Harga jual");
+    const tracksStock = input.tracksStock ?? defaultTracksStock(category);
+    const initialStock = tracksStock ? (input.initialStock ?? 0n) : 0n;
+    if (initialStock < 0n) {
+      throw new DomainError("invalid_quantity", "Stok awal tidak boleh negatif.");
+    }
+    const id = this.newId();
+    const now = this.now();
+    await inTransaction(this.database, async () => {
+      await this.database.run(
+        `INSERT INTO digital_products
+          (id, name, category, cost_rupiah, price_rupiah, track_stock, stock_quantity, created_at_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [id, name, category, toDb(cost), toDb(price), tracksStock ? 1 : 0, toDb(initialStock), now],
+      );
+      if (initialStock > 0n) {
+        await this.database.run(
+          `INSERT INTO digital_restocks (id, digital_product_id, restocked_at_ms, quantity, unit_cost_rupiah)
+           VALUES (?, ?, ?, ?, ?)`,
+          [this.newId(), id, now, toDb(initialStock), toDb(cost)],
+        );
+      }
+    });
+    return this.requireDigitalProduct(id);
+  }
+
+  /** Ubah nama, modal, dan harga jual (harga server pulsa sering berubah). */
+  async updateDigitalProduct(
+    productId: string,
+    changes: { readonly name: string; readonly costRupiah: Rupiah; readonly priceRupiah: Rupiah },
+  ): Promise<DigitalProduct> {
+    const name = requiredText(changes.name, "Nama produk", 120);
+    const cost = assertNonNegativeRupiah(changes.costRupiah, "Harga modal");
+    const price = assertNonNegativeRupiah(changes.priceRupiah, "Harga jual");
+    await this.requireDigitalProduct(productId);
+    await this.database.run(
+      "UPDATE digital_products SET name = ?, cost_rupiah = ?, price_rupiah = ? WHERE id = ?",
+      [name, toDb(cost), toDb(price), productId],
+    );
+    return this.requireDigitalProduct(productId);
+  }
+
+  /** Tambah stok kartu perdana/voucher. Modal ikut harga kulakan terbaru. */
+  async restockDigitalProduct(
+    productId: string,
+    quantity: bigint,
+    unitCostRupiah: Rupiah,
+  ): Promise<DigitalProduct> {
+    assertPositiveQuantity(quantity, "Jumlah tambah stok");
+    assertNonNegativeRupiah(unitCostRupiah, "Harga modal");
+    await inTransaction(this.database, async () => {
+      const product = await this.requireDigitalProduct(productId);
+      if (!product.tracksStock) {
+        throw new DomainError("invalid_state", "Produk ini tidak memakai stok.");
+      }
+      if (product.archivedAtMs !== null) {
+        throw new DomainError("invalid_state", "Produk ini sudah dihapus dari daftar.");
+      }
+      await this.database.run(
+        `INSERT INTO digital_restocks (id, digital_product_id, restocked_at_ms, quantity, unit_cost_rupiah)
+         VALUES (?, ?, ?, ?, ?)`,
+        [this.newId(), productId, this.now(), toDb(quantity), toDb(unitCostRupiah)],
+      );
+      await this.database.run(
+        `UPDATE digital_products SET stock_quantity = stock_quantity + ?, cost_rupiah = ? WHERE id = ?`,
+        [toDb(quantity), toDb(unitCostRupiah), productId],
+      );
+    });
+    return this.requireDigitalProduct(productId);
+  }
+
+  /** Sembunyikan dari daftar jual. Riwayat nota tetap utuh. */
+  async archiveDigitalProduct(productId: string): Promise<void> {
+    await this.requireDigitalProduct(productId);
+    await this.database.run("UPDATE digital_products SET archived_at_ms = ? WHERE id = ?", [
+      this.now(),
+      productId,
+    ]);
+  }
+
+  async listDigitalProducts(): Promise<readonly DigitalProduct[]> {
+    const rows = await this.database.query(
+      `SELECT * FROM digital_products WHERE archived_at_ms IS NULL
+       ORDER BY price_rupiah, name COLLATE NOCASE`,
+    );
+    const order = (category: DigitalCategory) => DIGITAL_CATEGORIES.indexOf(category);
+    // Urutan kategori mengikuti menu (Pulsa dulu), harga termurah dulu di tiap kategori.
+    return rows.map(readDigitalProduct).sort((a, b) => order(a.category) - order(b.category));
+  }
+
   // ----- Penjualan --------------------------------------------------------
 
   async recordSale(input: SaleInput): Promise<SaleRecord> {
@@ -419,9 +560,12 @@ export class KonterRepository {
       const snapshots: (SaleLineSnapshot & {
         readonly phoneUnitId: string | null;
         readonly accessoryId: string | null;
+        readonly digitalProductId: string | null;
+        readonly target: string | null;
       })[] = [];
       const seenPhones = new Set<string>();
       const accessoryDemand = new Map<string, bigint>();
+      const digitalDemand = new Map<string, bigint>();
 
       for (const line of input.lines) {
         if (line.kind === "hp") {
@@ -437,10 +581,52 @@ export class KonterRepository {
             kind: "hp",
             phoneUnitId: phone.id,
             accessoryId: null,
+            digitalProductId: null,
+            target: null,
             name: `${phone.displayName} (IMEI ${phone.imei1})`,
             quantity: 1n,
             unitPriceRupiah: line.priceRupiah,
             unitCostRupiah: phone.costRupiah,
+          });
+        } else if (line.kind === "digital") {
+          const quantity = line.quantity ?? 1n;
+          assertPositiveQuantity(quantity);
+          const target = optionalText(line.target, "Nomor tujuan", 60);
+          const product =
+            line.digitalProductId === null || line.digitalProductId === undefined
+              ? null
+              : await this.requireDigitalProduct(line.digitalProductId);
+          if (product !== null && product.archivedAtMs !== null) {
+            throw new DomainError("invalid_state", `${product.name} sudah dihapus dari daftar.`);
+          }
+          if (product !== null && product.tracksStock) {
+            const demand = (digitalDemand.get(product.id) ?? 0n) + quantity;
+            if (demand > product.stockQuantity) {
+              throw new DomainError(
+                "insufficient_stock",
+                `Stok ${product.name} tinggal ${product.stockQuantity}.`,
+              );
+            }
+            digitalDemand.set(product.id, demand);
+          }
+          const name =
+            product === null
+              ? requiredText(line.name ?? "", "Nama transaksi", 120)
+              : (optionalText(line.name, "Nama transaksi", 120) ?? product.name);
+          const cost = line.unitCostRupiah ?? product?.costRupiah ?? null;
+          if (cost === null) {
+            throw new DomainError("invalid_amount", `Isi harga modal untuk ${name}.`);
+          }
+          snapshots.push({
+            kind: "digital",
+            phoneUnitId: null,
+            accessoryId: null,
+            digitalProductId: product?.id ?? null,
+            target,
+            name,
+            quantity,
+            unitPriceRupiah: line.unitPriceRupiah,
+            unitCostRupiah: cost,
           });
         } else {
           assertPositiveQuantity(line.quantity);
@@ -460,6 +646,8 @@ export class KonterRepository {
             kind: "aksesoris",
             phoneUnitId: null,
             accessoryId: accessory.id,
+            digitalProductId: null,
+            target: null,
             name: accessory.name,
             quantity: line.quantity,
             unitPriceRupiah: line.unitPriceRupiah ?? accessory.priceRupiah,
@@ -492,9 +680,9 @@ export class KonterRepository {
       for (const [position, line] of snapshots.entries()) {
         await this.database.run(
           `INSERT INTO sale_lines
-            (id, sale_id, position, kind, phone_unit_id, accessory_id, name, quantity,
-             unit_price_rupiah, unit_cost_rupiah)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            (id, sale_id, position, kind, phone_unit_id, accessory_id, digital_product_id, target,
+             name, quantity, unit_price_rupiah, unit_cost_rupiah)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             this.newId(),
             saleId,
@@ -502,6 +690,8 @@ export class KonterRepository {
             line.kind,
             line.phoneUnitId,
             line.accessoryId,
+            line.digitalProductId,
+            line.target,
             line.name,
             toDb(line.quantity),
             toDb(line.unitPriceRupiah),
@@ -519,6 +709,12 @@ export class KonterRepository {
         await this.database.run(
           "UPDATE accessories SET stock_quantity = stock_quantity - ? WHERE id = ?",
           [toDb(quantity), accessoryId],
+        );
+      }
+      for (const [productId, quantity] of digitalDemand) {
+        await this.database.run(
+          "UPDATE digital_products SET stock_quantity = stock_quantity - ? WHERE id = ?",
+          [toDb(quantity), productId],
         );
       }
 
@@ -571,6 +767,14 @@ export class KonterRepository {
           await this.database.run(
             "UPDATE accessories SET stock_quantity = stock_quantity + ? WHERE id = ?",
             [toDb(line.quantity), line.accessoryId],
+          );
+        }
+        if (line.digitalProductId !== null) {
+          // Produk tanpa stok tetap 0; hanya kartu perdana/voucher yang dikembalikan.
+          await this.database.run(
+            `UPDATE digital_products SET stock_quantity = stock_quantity + ?
+             WHERE id = ? AND track_stock = 1`,
+            [toDb(line.quantity), line.digitalProductId],
           );
         }
       }
@@ -691,13 +895,18 @@ export class KonterRepository {
   }
 
   /** HP diambil pelanggan dan dilunasi. Untung service masuk laporan di tanggal ini. */
-  async pickUpService(serviceId: string): Promise<ServiceOrder> {
+  async pickUpService(
+    serviceId: string,
+    paymentMethod: PaymentMethod = "tunai",
+  ): Promise<ServiceOrder> {
+    const method = assertPaymentMethod(paymentMethod);
     await inTransaction(this.database, async () => {
       const order = await this.requireService(serviceId);
       assertServiceTransition(order.status, "diambil");
       await this.database.run(
-        "UPDATE service_orders SET status = 'diambil', picked_up_at_ms = ? WHERE id = ?",
-        [this.now(), serviceId],
+        `UPDATE service_orders SET status = 'diambil', picked_up_at_ms = ?, payment_method = ?
+         WHERE id = ?`,
+        [this.now(), method, serviceId],
       );
     });
     return this.requireService(serviceId);
@@ -1086,6 +1295,14 @@ export class KonterRepository {
     return readAccessory(rows[0]);
   }
 
+  private async requireDigitalProduct(id: string): Promise<DigitalProduct> {
+    const rows = await this.database.query("SELECT * FROM digital_products WHERE id = ?", [id]);
+    if (rows[0] === undefined) {
+      throw new DomainError("not_found", "Produk digital tidak ditemukan.");
+    }
+    return readDigitalProduct(rows[0]);
+  }
+
   private async requireSale(id: string): Promise<SaleRecord> {
     const sale = await this.getSale(id);
     if (sale === null) {
@@ -1198,6 +1415,20 @@ function readAccessory(row: SqlRow): Accessory {
   };
 }
 
+function readDigitalProduct(row: SqlRow): DigitalProduct {
+  return {
+    id: readText(row, "id"),
+    name: readText(row, "name"),
+    category: assertDigitalCategory(readText(row, "category")),
+    costRupiah: readBigint(row, "cost_rupiah"),
+    priceRupiah: readBigint(row, "price_rupiah"),
+    tracksStock: readNumber(row, "track_stock") === 1,
+    stockQuantity: readBigint(row, "stock_quantity"),
+    createdAtMs: readNumber(row, "created_at_ms"),
+    archivedAtMs: readOptionalNumber(row, "archived_at_ms"),
+  };
+}
+
 function readSaleLine(row: SqlRow): SaleLineRecord {
   return {
     id: readText(row, "id"),
@@ -1205,6 +1436,8 @@ function readSaleLine(row: SqlRow): SaleLineRecord {
     kind: readText(row, "kind") as SaleLineKind,
     phoneUnitId: readOptionalText(row, "phone_unit_id"),
     accessoryId: readOptionalText(row, "accessory_id"),
+    digitalProductId: readOptionalText(row, "digital_product_id"),
+    target: readOptionalText(row, "target"),
     name: readText(row, "name"),
     quantity: readBigint(row, "quantity"),
     unitPriceRupiah: readBigint(row, "unit_price_rupiah"),
@@ -1235,6 +1468,10 @@ function readService(row: SqlRow): ServiceOrder {
     partsNote: readOptionalText(row, "parts_note"),
     finishedAtMs: readOptionalNumber(row, "finished_at_ms"),
     pickedUpAtMs: readOptionalNumber(row, "picked_up_at_ms"),
+    paymentMethod:
+      readOptionalText(row, "payment_method") === null
+        ? null
+        : assertPaymentMethod(readText(row, "payment_method")),
     profitRupiah:
       totalCharge === null
         ? null

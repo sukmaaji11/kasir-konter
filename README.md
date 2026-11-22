@@ -1,7 +1,8 @@
 # Kasir Konter
 
 Aplikasi kasir Android offline-first untuk konter HP: jual beli HP (baru,
-bekas, tukar tambah), service, dan aksesoris. Fokus utamanya: pemilik konter
+bekas, tukar tambah), service, aksesoris, dan layanan digital (pulsa, paket
+data, kartu perdana, top up, token listrik). Fokus utamanya: pemilik konter
 langsung tahu **untung per HP, per hari, dan per bulan**, dipisah per lini.
 
 Teknologinya sama dengan Kasir Kaki Lima (Capacitor + React + SQLite), tapi
@@ -28,12 +29,19 @@ npm run build
   (termasuk ongkir). Masuk laporan pada **hari HP diambil**, bukan saat
   selesai dikerjakan. Service batal tetap bisa punya biaya cek dan modal
   sparepart yang terlanjur dibeli.
+- **Digital:** untung = harga jual − modal (harga server/aplikasi agen).
+  Pulsa, paket data, top up, dan token tidak punya stok; modalnya boleh
+  disesuaikan saat jual kalau harga server berubah. Kartu perdana punya stok
+  (jual melebihi stok ditolak). Transaksi manual (tanpa daftar produk) wajib
+  diisi nama dan modal. Nomor tujuan disimpan di baris nota.
+- **Pelunasan service** dicatat di Kasir (bagian Service) lengkap dengan
+  metode bayar, lalu nota service bisa dikirim ke WA.
 - Nama, harga jual, dan harga modal dibekukan di baris nota, jadi mengubah
   harga nanti tidak mengubah laporan lama.
 - Laporan memakai hari Asia/Jakarta (WIB). Nomor nota per hari:
   `J-YYYYMMDD-001` (jual) dan `S-YYYYMMDD-001` (service).
-- Nota bisa dibatalkan: HP kembali ke stok, stok aksesoris dikembalikan, HP
-  tukar tambah dikeluarkan. Ditolak kalau HP tukar tambahnya sudah terjual.
+- Nota bisa dibatalkan: HP kembali ke stok, stok aksesoris dan kartu perdana
+  dikembalikan, HP tukar tambah dikeluarkan. Ditolak kalau HP tukar tambahnya sudah terjual.
 - IMEI unik hanya di antara HP yang masih di stok, karena HP yang sama bisa
   dijual lalu dibeli kembali. Riwayat per IMEI tetap bisa dicari.
 
@@ -45,12 +53,14 @@ npm run build
 - `src/application`: login PIN (Owner/karyawan) dan lisensi offline.
 - `src/licensing`: format kode aktivasi `KKO1`. Kode Kasir Kaki Lima (`KKL1`)
   tidak berlaku di sini.
-- `src/ui`: layar Kasir, Stok HP, Service, Aksesoris, Untung, Pengaturan.
+- `src/ui`: Beranda (ringkasan hari ini, grafik 7 hari, perlu perhatian),
+  Kasir (Barang · Digital · Service), Stok HP, Service, Aksesoris, Produk
+  digital, Riwayat nota, Laporan untung, Pengaturan.
 
 ## Hak akses
 
 Karyawan boleh jualan, service, dan melihat stok. Harga modal, untung, HP
-masuk, tambah stok/harga aksesoris, pembatalan nota, dan pengaturan pengguna
+masuk, tambah stok/harga aksesoris dan produk digital, pembatalan nota, dan pengaturan pengguna
 hanya untuk Owner.
 
 ## Lisensi (Admin)
@@ -83,7 +93,7 @@ Set-Location android
 .\gradlew.bat assembleDebug "-Dorg.gradle.java.installations.paths=$env:JAVA_HOME"
 ```
 
-APK uji: `androidppuild\outputspk\debugpp-debug.apk`, dengan ID
+APK uji: `android/app/build/outputs/apk/debug/app-debug.apk`, dengan ID
 `id.co.jadicuan.kasirkonter.dev`, terpisah dari versi rilis.
 
 ## Status
@@ -91,6 +101,10 @@ APK uji: `androidppuild\outputspk\debugpp-debug.apk`, dengan ID
 - Tahap 1: domain, database, laporan untung.
 - Tahap 2: lisensi + PIN, semua layar utama, platform Android. Sudah jalan
   di tablet SM-T225.
+- Revisi Owner 1: tulisan lebih kecil, menu bawah + Beranda, Kasir 2 langkah,
+  foto produk (skema v3).
+- Revisi Owner 2: Beranda lebih lengkap, Kasir untuk pelunasan service,
+  layanan digital (skema v4).
 
 Berikutnya:
 1. Cadangan/pindah HP (ekspor/impor file) dan pengingat backup.

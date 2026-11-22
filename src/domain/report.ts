@@ -1,12 +1,13 @@
 import { sumRupiah, type Rupiah } from "./money";
 
-export type BusinessLine = "hp" | "aksesoris" | "service";
+export type BusinessLine = "hp" | "aksesoris" | "digital" | "service";
 
-export const BUSINESS_LINES: readonly BusinessLine[] = ["hp", "aksesoris", "service"];
+export const BUSINESS_LINES: readonly BusinessLine[] = ["hp", "aksesoris", "digital", "service"];
 
 export const BUSINESS_LINE_LABELS: Readonly<Record<BusinessLine, string>> = {
   hp: "Jual HP",
   aksesoris: "Aksesoris",
+  digital: "Digital",
   service: "Service",
 };
 

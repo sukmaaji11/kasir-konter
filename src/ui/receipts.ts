@@ -33,10 +33,11 @@ export function saleReceiptText(sale: SaleRecord, store: StoreProfile): string {
   lines.push("");
   for (const line of sale.lines) {
     const total = line.unitPriceRupiah * line.quantity;
+    const name = line.target === null ? line.name : `${line.name} ke ${line.target}`;
     lines.push(
       line.quantity === 1n
-        ? `${line.name}\n  ${rp(total)}`
-        : `${line.name}\n  ${line.quantity} x ${rp(line.unitPriceRupiah)} = ${rp(total)}`,
+        ? `${name}\n  ${rp(total)}`
+        : `${name}\n  ${line.quantity} x ${rp(line.unitPriceRupiah)} = ${rp(total)}`,
     );
   }
   lines.push("", `Total: ${rp(sale.summary.itemsTotalRupiah)}`);
@@ -60,7 +61,7 @@ export function serviceReceiptText(order: ServiceOrder, store: StoreProfile): st
   const lines = [
     ...header(store),
     "",
-    `Tanda terima service ${order.number}`,
+    `${order.status === "diambil" ? "Nota service" : "Tanda terima service"} ${order.number}`,
     dateTimeWib(order.receivedAtMs),
     "",
     `Pelanggan: ${order.customerName}`,
@@ -77,10 +78,21 @@ export function serviceReceiptText(order: ServiceOrder, store: StoreProfile): st
     const balance = order.balanceDueRupiah ?? 0n;
     if (order.status !== "diambil") {
       lines.push(balance >= 0n ? `Sisa bayar: ${rp(balance)}` : `DP dikembalikan: ${rp(-balance)}`);
+    } else {
+      const method = order.paymentMethod === null ? "" : ` (${PAYMENT_LABELS[order.paymentMethod]})`;
+      lines.push(
+        balance >= 0n ? `*Pelunasan: ${rp(balance)}*${method}` : `DP dikembalikan: ${rp(-balance)}`,
+        `Diambil: ${dateTimeWib(order.pickedUpAtMs ?? Date.now())}`,
+      );
     }
   }
-  lines.push("", "Simpan pesan ini untuk mengambil HP.");
-  if (store.footer.trim()) lines.push(store.footer.trim());
+  if (order.status === "diambil") {
+    if (store.footer.trim()) lines.push("", store.footer.trim());
+    lines.push("", "Terima kasih 🙏");
+  } else {
+    lines.push("", "Simpan pesan ini untuk mengambil HP.");
+    if (store.footer.trim()) lines.push(store.footer.trim());
+  }
   return lines.join("\n");
 }
 

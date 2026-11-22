@@ -71,7 +71,7 @@ export function ReportPage({ ctx }: { readonly ctx: PageContext }) {
                     {rpSigned(totals.profitRupiah)}
                   </strong>
                   <span className="muted">
-                    {totals.count.toString()} {line === "hp" ? "unit" : line === "service" ? "service" : "barang"} · omzet{" "}
+                    {totals.count.toString()} {line === "hp" ? "unit" : line === "service" ? "service" : line === "digital" ? "transaksi" : "barang"} · omzet{" "}
                     {rp(totals.revenueRupiah)}
                   </span>
                 </section>

@@ -16,6 +16,7 @@ import { loadStoreProfile, type StoreProfile } from "./receipts";
 import { ReportPage } from "./ReportPage";
 import { SalePage } from "./SalePage";
 import { ServicePage } from "./ServicePage";
+import { DigitalPage } from "./DigitalPage";
 import { HomePage } from "./HomePage";
 import { SalesHistoryPage } from "./SalesHistoryPage";
 import { useAndroidBack } from "./useAndroidBack";
@@ -36,6 +37,7 @@ export type Tab =
   | "laporan"
   | "hp"
   | "aksesoris"
+  | "digital"
   | "nota"
   | "pengaturan";
 
@@ -58,6 +60,7 @@ const PAGE_TITLES: Readonly<Record<Tab, string>> = {
   laporan: "Laporan untung",
   hp: "Stok HP",
   aksesoris: "Aksesoris",
+  digital: "Produk digital",
   nota: "Riwayat nota",
   pengaturan: "Pengaturan",
 };
@@ -158,6 +161,7 @@ export function MainApp({
         {tab === "hp" && <PhonesPage ctx={ctx} />}
         {tab === "service" && <ServicePage ctx={ctx} />}
         {tab === "aksesoris" && <AccessoriesPage ctx={ctx} />}
+        {tab === "digital" && <DigitalPage ctx={ctx} />}
         {tab === "nota" && <SalesHistoryPage ctx={ctx} />}
         {tab === "laporan" && can(user, "viewCostAndProfit") && <ReportPage ctx={ctx} />}
         {tab === "pengaturan" && <SettingsPage ctx={ctx} onStoreSaved={setStore} />}

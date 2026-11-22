@@ -114,16 +114,19 @@ export function ProductThumb({
   src,
   kind,
   size = "md",
+  icon,
 }: {
   readonly src: string | undefined;
-  readonly kind: "hp" | "aksesoris";
+  readonly kind: "hp" | "aksesoris" | "digital";
   readonly size?: "sm" | "md" | "lg";
+  /** Ikon pengganti khusus (mis. kategori produk digital). */
+  readonly icon?: string;
 }) {
   return src !== undefined ? (
     <img className={`product-thumb thumb-${size}`} src={src} alt="" />
   ) : (
     <span className={`product-thumb thumb-${size} placeholder`} aria-hidden="true">
-      {kind === "hp" ? "📱" : "🎧"}
+      {icon ?? (kind === "hp" ? "📱" : kind === "digital" ? "📶" : "🎧")}
     </span>
   );
 }

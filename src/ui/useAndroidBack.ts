@@ -4,6 +4,11 @@ import { useEffect, useRef } from "react";
  * Tumpukan penanganan tombol Back Android. MainActivity meneruskan Back ke
  * riwayat WebView; setiap layar yang aktif (halaman, editor, panel) menambah
  * satu entri history. Satu kali Back hanya menutup entri paling atas.
+ *
+ * Kalau satu lembar ditutup dan lembar lain dibuka dalam render yang sama
+ * (mis. Bayar → Nota), entri history yang dilepas dipakai ulang. Tanpa ini
+ * `history.back()` yang masih tertunda ikut membuang entri baru, sehingga
+ * Back berikutnya keluar dari aplikasi.
  */
 interface BackEntry {
   readonly onBack: () => void;
@@ -12,6 +17,9 @@ interface BackEntry {
 const stack: BackEntry[] = [];
 let ignoredPops = 0;
 let listening = false;
+/** Entri yang dilepas kode tapi belum di-`back()`: bisa dipakai ulang. */
+let releasedEntries = 0;
+let flushScheduled = false;
 
 function ensureListener() {
   if (listening) return;
@@ -24,6 +32,20 @@ function ensureListener() {
     }
     stack.pop()?.onBack();
   });
+}
+
+function scheduleFlush() {
+  if (flushScheduled) return;
+  flushScheduled = true;
+  setTimeout(() => {
+    flushScheduled = false;
+    const count = releasedEntries;
+    releasedEntries = 0;
+    if (count > 0) {
+      ignoredPops += 1;
+      window.history.go(-count);
+    }
+  }, 0);
 }
 
 export function useAndroidBack(active: boolean, onBack: () => void): void {
@@ -41,13 +63,18 @@ export function useAndroidBack(active: boolean, onBack: () => void): void {
       },
     };
     stack.push(entry);
-    window.history.pushState({ kasirKonterBack: stack.length }, "");
+    if (releasedEntries > 0) {
+      releasedEntries -= 1;
+      window.history.replaceState({ kasirKonterBack: stack.length }, "");
+    } else {
+      window.history.pushState({ kasirKonterBack: stack.length }, "");
+    }
     return () => {
       if (poppedByBack) return;
       const index = stack.indexOf(entry);
       if (index >= 0) stack.splice(index, 1);
-      ignoredPops += 1;
-      window.history.back();
+      releasedEntries += 1;
+      scheduleFlush();
     };
   }, [active]);
 }

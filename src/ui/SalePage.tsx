@@ -1,20 +1,38 @@
 import { useMemo, useState } from "react";
-import type { Accessory, PhoneUnit, SaleLineInput, SaleRecord } from "../data/repository";
+import type { Accessory, DigitalProduct, PhoneUnit, SaleLineInput, SaleRecord, ServiceOrder } from "../data/repository";
 import { can } from "../domain/auth";
+import {
+  DIGITAL_CATEGORIES,
+  DIGITAL_CATEGORY_ICONS,
+  DIGITAL_CATEGORY_LABELS,
+  targetLabel,
+  type DigitalCategory,
+} from "../domain/digital";
 import type { PhoneCondition } from "../domain/phones";
 import type { PaymentMethod } from "../domain/sales";
+import { SERVICE_STATUS_LABELS } from "../domain/service";
 import { CurrencyInput } from "./CurrencyInput";
 import { Chips, EmptyState, ErrorText, Sheet, useAction, useLoad } from "./common";
 import type { PageContext } from "./context";
-import { digitsToRupiah, rp, rpSigned, rupiahToDigits } from "./format";
+import { ageLabel, digitsToRupiah, rp, rpSigned, rupiahToDigits } from "./format";
 import { ProductThumb } from "./PhotoStrip";
 import { saleReceiptText } from "./receipts";
+import {
+  NewServiceSheet,
+  PAYMENT_OPTIONS,
+  STATUS_BADGE,
+  ServiceDetailSheet,
+  ServiceDoneSheet,
+  ServicePaySheet,
+} from "./ServicePage";
 import { openWhatsApp, shareText } from "./whatsapp";
 
 /**
- * Kasir dua langkah:
- *  1. Pilih barang: kotak bergambar + satu kolom cari. Ketuk = masuk keranjang.
- *  2. Bayar: lembar berisi harga, tukar tambah, pelanggan, metode bayar.
+ * Kasir punya tiga bagian:
+ *  - Barang: HP + aksesoris (kotak bergambar, ketuk = masuk keranjang).
+ *  - Digital: pulsa, paket data, perdana, top up, token, transaksi manual.
+ *    Masuk keranjang yang sama, jadi satu nota bisa berisi casing + pulsa.
+ *  - Service: terima service baru dan pelunasan HP yang siap diambil.
  */
 
 type CartLine =
@@ -25,6 +43,18 @@ type CartLine =
       readonly accessory: Accessory;
       readonly quantity: number;
       readonly price: string;
+    }
+  | {
+      readonly key: string;
+      readonly kind: "digital";
+      /** Null = transaksi manual. */
+      readonly product: DigitalProduct | null;
+      readonly category: DigitalCategory;
+      readonly name: string;
+      readonly target: string;
+      readonly quantity: number;
+      readonly price: string;
+      readonly cost: string;
     };
 
 interface TradeInForm {
@@ -47,47 +77,245 @@ const EMPTY_TRADE_IN: TradeInForm = {
   credit: "",
 };
 
-const PAYMENT_OPTIONS = [
-  { value: "tunai", label: "Tunai" },
-  { value: "transfer", label: "Transfer" },
-  { value: "qris", label: "QRIS" },
-] as const;
-
+type Mode = "barang" | "digital" | "service";
 type Filter = "semua" | "hp" | "aksesoris";
+type DigitalFilter = "semua" | DigitalCategory;
+
+/** Lembar isian digital: produk dari daftar, atau transaksi manual. */
+type DigitalDraft = { readonly product: DigitalProduct | null };
+
+let keySeed = 0;
+const nextKey = (prefix: string) => `${prefix}-${Date.now()}-${++keySeed}`;
 
 export function SalePage({ ctx }: { readonly ctx: PageContext }) {
   const stock = useLoad(
     async () => ({
       phones: await ctx.repo.listPhonesInStock(),
       accessories: await ctx.repo.listAccessories(),
+      digital: await ctx.repo.listDigitalProducts(),
+      services: await ctx.repo.listOpenServices(),
       phoneThumbs: await ctx.repo.coverThumbnails("phone"),
       accessoryThumbs: await ctx.repo.coverThumbnails("accessory"),
     }),
     [ctx.repo, ctx.dataVersion],
   );
+  const [mode, setMode] = useState<Mode>("barang");
   const [filter, setFilter] = useState<Filter>("semua");
+  const [digitalFilter, setDigitalFilter] = useState<DigitalFilter>("semua");
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<readonly CartLine[]>([]);
   const [checkout, setCheckout] = useState(false);
   const [receipt, setReceipt] = useState<SaleRecord | null>(null);
-
-  const query = search.trim().toLowerCase();
-  const phones = (stock.data?.phones ?? []).filter(
-    (phone) =>
-      query === "" ||
-      phone.displayName.toLowerCase().includes(query) ||
-      phone.imei1.includes(query) ||
-      (phone.imei2 ?? "").includes(query),
-  );
-  const accessories = (stock.data?.accessories ?? []).filter(
-    (item) => query === "" || item.name.toLowerCase().includes(query) || (item.category ?? "").toLowerCase().includes(query),
-  );
+  const [digitalDraft, setDigitalDraft] = useState<DigitalDraft | null>(null);
 
   const cartCount = cart.reduce((sum, line) => sum + (line.kind === "hp" ? 1 : line.quantity), 0);
   const cartTotal = cart.reduce((sum, line) => {
     const price = digitsToRupiah(line.price) ?? 0n;
     return sum + (line.kind === "hp" ? price : price * BigInt(line.quantity));
   }, 0n);
+  const readyServices = (stock.data?.services ?? []).filter((order) => order.status !== "proses").length;
+
+  function addDigitalFromStock(product: DigitalProduct) {
+    setCart((current) => {
+      const existing = current.find((line) => line.kind === "digital" && line.product?.id === product.id);
+      if (existing === undefined) {
+        return [
+          ...current,
+          {
+            key: nextKey("dig"),
+            kind: "digital",
+            product,
+            category: product.category,
+            name: product.name,
+            target: "",
+            quantity: 1,
+            price: product.priceRupiah.toString(),
+            cost: product.costRupiah.toString(),
+          },
+        ];
+      }
+      return current.map((line) =>
+        line === existing && line.kind === "digital" && BigInt(line.quantity) < product.stockQuantity
+          ? { ...line, quantity: line.quantity + 1 }
+          : line,
+      );
+    });
+  }
+
+  return (
+    <div className={cart.length > 0 && mode !== "service" ? "page sale-page has-cart" : "page sale-page"}>
+      <div className="sale-search">
+        <div className="segmented" role="tablist" aria-label="Bagian kasir">
+          {(
+            [
+              { id: "barang", label: "📱 Barang" },
+              { id: "digital", label: "📶 Digital" },
+              { id: "service", label: "🔧 Service", badge: readyServices },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={mode === item.id}
+              className={mode === item.id ? "segment active" : "segment"}
+              onClick={() => {
+                setMode(item.id);
+                setSearch("");
+              }}
+            >
+              {item.label}
+              {"badge" in item && item.badge > 0 && <span className="segment-badge">{item.badge}</span>}
+            </button>
+          ))}
+        </div>
+        {mode !== "service" && (
+          <input
+            className="search-input"
+            type="search"
+            placeholder={mode === "barang" ? "Cari HP, IMEI, atau aksesoris…" : "Cari pulsa, paket, perdana…"}
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        )}
+        {mode === "barang" && (
+          <Chips
+            value={filter}
+            onChange={setFilter}
+            label="Jenis barang"
+            options={[
+              { value: "semua", label: "Semua" },
+              { value: "hp", label: `HP (${stock.data?.phones.length ?? 0})` },
+              { value: "aksesoris", label: "Aksesoris" },
+            ]}
+          />
+        )}
+        {mode === "digital" && (stock.data?.digital.length ?? 0) > 0 && (
+          <Chips
+            value={digitalFilter}
+            onChange={setDigitalFilter}
+            label="Kategori digital"
+            options={[
+              { value: "semua", label: "Semua" },
+              ...DIGITAL_CATEGORIES.filter((category) => (stock.data?.digital ?? []).some((item) => item.category === category)).map(
+                (category) => ({ value: category, label: DIGITAL_CATEGORY_LABELS[category] }),
+              ),
+            ]}
+          />
+        )}
+      </div>
+      <ErrorText error={stock.error} />
+
+      {mode === "barang" && stock.data !== null && (
+        <GoodsGrid
+          phones={stock.data.phones}
+          accessories={stock.data.accessories}
+          phoneThumbs={stock.data.phoneThumbs}
+          accessoryThumbs={stock.data.accessoryThumbs}
+          filter={filter}
+          search={search}
+          cart={cart}
+          setCart={setCart}
+        />
+      )}
+
+      {mode === "digital" && stock.data !== null && (
+        <DigitalGrid
+          ctx={ctx}
+          products={stock.data.digital}
+          filter={digitalFilter}
+          search={search}
+          cart={cart}
+          onPick={(product) => {
+            if (product !== null && product.tracksStock) addDigitalFromStock(product);
+            else setDigitalDraft({ product });
+          }}
+        />
+      )}
+
+      {mode === "service" && <ServiceCashier ctx={ctx} orders={stock.data?.services ?? []} />}
+
+      {cart.length > 0 && mode !== "service" && (
+        <div className="cart-bar">
+          <button type="button" className="cart-bar-clear" onClick={() => setCart([])} aria-label="Kosongkan keranjang">
+            ✕
+          </button>
+          <div className="cart-bar-info">
+            <span>{cartCount} item</span>
+            <strong>{rp(cartTotal)}</strong>
+          </div>
+          <button type="button" className="button button-primary cart-bar-pay" onClick={() => setCheckout(true)}>
+            Bayar →
+          </button>
+        </div>
+      )}
+
+      {digitalDraft !== null && (
+        <DigitalLineSheet
+          ctx={ctx}
+          product={digitalDraft.product}
+          onClose={() => setDigitalDraft(null)}
+          onAdd={(line) => {
+            setCart((current) => [...current, line]);
+            setDigitalDraft(null);
+          }}
+        />
+      )}
+      {checkout && (
+        <CheckoutSheet
+          ctx={ctx}
+          cart={cart}
+          setCart={setCart}
+          thumbs={{ phone: stock.data?.phoneThumbs, accessory: stock.data?.accessoryThumbs }}
+          onClose={() => setCheckout(false)}
+          onSaved={(sale) => {
+            setCheckout(false);
+            setCart([]);
+            setSearch("");
+            setReceipt(sale);
+            ctx.changed();
+          }}
+        />
+      )}
+      {receipt !== null && <ReceiptSheet ctx={ctx} sale={receipt} onClose={() => setReceipt(null)} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bagian Barang
+// ---------------------------------------------------------------------------
+
+function GoodsGrid({
+  phones: allPhones,
+  accessories: allAccessories,
+  phoneThumbs,
+  accessoryThumbs,
+  filter,
+  search,
+  cart,
+  setCart,
+}: {
+  readonly phones: readonly PhoneUnit[];
+  readonly accessories: readonly Accessory[];
+  readonly phoneThumbs: ReadonlyMap<string, string>;
+  readonly accessoryThumbs: ReadonlyMap<string, string>;
+  readonly filter: Filter;
+  readonly search: string;
+  readonly cart: readonly CartLine[];
+  readonly setCart: (update: (current: readonly CartLine[]) => readonly CartLine[]) => void;
+}) {
+  const query = search.trim().toLowerCase();
+  const phones = allPhones.filter(
+    (phone) =>
+      query === "" ||
+      phone.displayName.toLowerCase().includes(query) ||
+      phone.imei1.includes(query) ||
+      (phone.imei2 ?? "").includes(query),
+  );
+  const accessories = allAccessories.filter(
+    (item) => query === "" || item.name.toLowerCase().includes(query) || (item.category ?? "").toLowerCase().includes(query),
+  );
 
   function togglePhone(phone: PhoneUnit) {
     setCart((current) =>
@@ -119,37 +347,14 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
     return line?.kind === "aksesoris" ? line.quantity : 0;
   };
   const phoneInCart = (phoneId: string) => cart.some((line) => line.kind === "hp" && line.phone.id === phoneId);
-  const showPhones = filter !== "aksesoris";
-  const showAccessories = filter !== "hp";
 
   return (
-    <div className={cart.length > 0 ? "page sale-page has-cart" : "page sale-page"}>
-      <div className="sale-search">
-        <input
-          className="search-input"
-          type="search"
-          placeholder="Cari HP, IMEI, atau aksesoris…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        <Chips
-          value={filter}
-          onChange={setFilter}
-          label="Jenis barang"
-          options={[
-            { value: "semua", label: "Semua" },
-            { value: "hp", label: `HP (${stock.data?.phones.length ?? 0})` },
-            { value: "aksesoris", label: "Aksesoris" },
-          ]}
-        />
-      </div>
-      <ErrorText error={stock.error} />
-
-      {showPhones && (
+    <>
+      {filter !== "aksesoris" && (
         <section>
           {filter === "semua" && <h2 className="section-title">HP</h2>}
           {phones.length === 0 ? (
-            <EmptyState>{stock.data?.phones.length === 0 ? "Belum ada HP di stok." : "Tidak ada HP yang cocok."}</EmptyState>
+            <EmptyState>{allPhones.length === 0 ? "Belum ada HP di stok." : "Tidak ada HP yang cocok."}</EmptyState>
           ) : (
             <div className="product-grid">
               {phones.map((phone) => {
@@ -162,7 +367,7 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
                     onClick={() => togglePhone(phone)}
                     aria-pressed={selected}
                   >
-                    <ProductThumb src={stock.data?.phoneThumbs.get(phone.id)} kind="hp" size="lg" />
+                    <ProductThumb src={phoneThumbs.get(phone.id)} kind="hp" size="lg" />
                     {selected && <span className="product-check">✓</span>}
                     <span className="product-name">{phone.displayName}</span>
                     <span className="product-meta">
@@ -181,11 +386,11 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
         </section>
       )}
 
-      {showAccessories && (
+      {filter !== "hp" && (
         <section>
           {filter === "semua" && <h2 className="section-title">Aksesoris</h2>}
           {accessories.length === 0 ? (
-            <EmptyState>{stock.data?.accessories.length === 0 ? "Belum ada aksesoris." : "Tidak ada aksesoris yang cocok."}</EmptyState>
+            <EmptyState>{allAccessories.length === 0 ? "Belum ada aksesoris." : "Tidak ada aksesoris yang cocok."}</EmptyState>
           ) : (
             <div className="product-grid">
               {accessories.map((item) => {
@@ -199,7 +404,7 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
                     onClick={() => addAccessory(item)}
                     disabled={soldOut}
                   >
-                    <ProductThumb src={stock.data?.accessoryThumbs.get(item.id)} kind="aksesoris" size="lg" />
+                    <ProductThumb src={accessoryThumbs.get(item.id)} kind="aksesoris" size="lg" />
                     {quantity > 0 && <span className="product-check">{quantity}</span>}
                     <span className="product-name">{item.name}</span>
                     <span className={item.stockQuantity <= 2n ? "product-meta warn-text" : "product-meta"}>
@@ -213,41 +418,336 @@ export function SalePage({ ctx }: { readonly ctx: PageContext }) {
           )}
         </section>
       )}
+    </>
+  );
+}
 
-      {cart.length > 0 && (
-        <div className="cart-bar">
-          <button type="button" className="cart-bar-clear" onClick={() => setCart([])} aria-label="Kosongkan keranjang">
-            ✕
-          </button>
-          <div className="cart-bar-info">
-            <span>{cartCount} barang</span>
-            <strong>{rp(cartTotal)}</strong>
-          </div>
-          <button type="button" className="button button-primary cart-bar-pay" onClick={() => setCheckout(true)}>
-            Bayar →
-          </button>
-        </div>
+// ---------------------------------------------------------------------------
+// Bagian Digital
+// ---------------------------------------------------------------------------
+
+function DigitalGrid({
+  ctx,
+  products,
+  filter,
+  search,
+  cart,
+  onPick,
+}: {
+  readonly ctx: PageContext;
+  readonly products: readonly DigitalProduct[];
+  readonly filter: DigitalFilter;
+  readonly search: string;
+  readonly cart: readonly CartLine[];
+  readonly onPick: (product: DigitalProduct | null) => void;
+}) {
+  const query = search.trim().toLowerCase();
+  const list = products.filter(
+    (item) => (filter === "semua" || item.category === filter) && (query === "" || item.name.toLowerCase().includes(query)),
+  );
+  const inCart = (productId: string) =>
+    cart.reduce((sum, line) => sum + (line.kind === "digital" && line.product?.id === productId ? line.quantity : 0), 0);
+
+  return (
+    <section>
+      <div className="product-grid compact">
+        <button type="button" className="product-card manual-card" onClick={() => onPick(null)}>
+          <span className="product-thumb thumb-md placeholder" aria-hidden="true">✍️</span>
+          <span className="product-name">Transaksi manual</span>
+          <span className="product-meta">Isi nama, nomor, modal &amp; harga sendiri</span>
+        </button>
+        {list.map((item) => {
+          const count = inCart(item.id);
+          const soldOut = item.tracksStock && item.stockQuantity === 0n;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              className={count > 0 ? "product-card selected" : "product-card"}
+              onClick={() => onPick(item)}
+              disabled={soldOut}
+            >
+              <ProductThumb src={undefined} kind="digital" icon={DIGITAL_CATEGORY_ICONS[item.category]} size="md" />
+              {count > 0 && <span className="product-check">{count}</span>}
+              <span className="product-name">{item.name}</span>
+              <span className={item.tracksStock && item.stockQuantity <= 2n ? "product-meta warn-text" : "product-meta"}>
+                {item.tracksStock
+                  ? soldOut
+                    ? "Stok habis"
+                    : `Stok ${item.stockQuantity.toString()}`
+                  : DIGITAL_CATEGORY_LABELS[item.category]}
+              </span>
+              <span className="product-price">{rp(item.priceRupiah)}</span>
+            </button>
+          );
+        })}
+      </div>
+      {products.length === 0 && (
+        <p className="muted small digital-hint">
+          Belum ada daftar harga digital.{" "}
+          {can(ctx.user, "manageAccessories") ? (
+            <button type="button" className="link-like" onClick={() => ctx.open("digital")}>
+              Isi daftar Produk digital
+            </button>
+          ) : (
+            "Minta Owner mengisi daftar Produk digital."
+          )}{" "}
+          supaya tinggal ketuk, atau pakai Transaksi manual.
+        </p>
       )}
+    </section>
+  );
+}
 
-      {checkout && (
-        <CheckoutSheet
+/** Isi nomor tujuan (dan harga) sebelum pulsa/top up masuk keranjang. */
+function DigitalLineSheet({
+  ctx,
+  product,
+  onClose,
+  onAdd,
+}: {
+  readonly ctx: PageContext;
+  readonly product: DigitalProduct | null;
+  readonly onClose: () => void;
+  readonly onAdd: (line: CartLine) => void;
+}) {
+  const showCost = can(ctx.user, "viewCostAndProfit");
+  const manual = product === null;
+  const [category, setCategory] = useState<DigitalCategory>(product?.category ?? "pulsa");
+  const [name, setName] = useState(product?.name ?? "");
+  const [target, setTarget] = useState("");
+  const [price, setPrice] = useState(product?.priceRupiah.toString() ?? "");
+  const [cost, setCost] = useState(product?.costRupiah.toString() ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const label = targetLabel(category);
+  const profit = (digitsToRupiah(price) ?? 0n) - (digitsToRupiah(cost) ?? 0n);
+
+  function add() {
+    if (manual && name.trim() === "") return setError("Isi nama transaksi, mis. Top up DANA 50rb.");
+    if (label !== null && target.trim() === "" && category !== "lainnya") return setError(`Isi ${label.toLowerCase()}.`);
+    if (digitsToRupiah(price) === null) return setError("Isi harga jual.");
+    if (digitsToRupiah(cost) === null) return setError("Isi harga modal.");
+    onAdd({
+      key: nextKey("dig"),
+      kind: "digital",
+      product,
+      category,
+      name: name.trim(),
+      target: target.trim(),
+      quantity: 1,
+      price,
+      cost,
+    });
+  }
+
+  return (
+    <Sheet title={manual ? "Transaksi manual" : product.name} onClose={onClose}>
+      {manual && (
+        <>
+          <Chips
+            value={category}
+            onChange={setCategory}
+            label="Jenis"
+            options={DIGITAL_CATEGORIES.filter((value) => value !== "perdana").map((value) => ({
+              value,
+              label: `${DIGITAL_CATEGORY_ICONS[value]} ${DIGITAL_CATEGORY_LABELS[value]}`,
+            }))}
+          />
+          <label className="block-label">
+            Nama transaksi *
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Top up DANA 50rb" autoFocus />
+          </label>
+        </>
+      )}
+      {label !== null && (
+        <label className="block-label">
+          {label}
+          {category !== "lainnya" ? " *" : ""}
+          <input
+            inputMode={category === "topup" || category === "lainnya" ? "text" : "numeric"}
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            placeholder={category === "token" ? "No. meter 11–12 digit" : "08…"}
+            autoFocus={!manual}
+          />
+        </label>
+      )}
+      <div className="form-grid two">
+        <label>
+          Harga jual *
+          <CurrencyInput value={price} onValueChange={setPrice} />
+        </label>
+        {(manual || showCost) && (
+          <label>
+            Harga modal *
+            <CurrencyInput value={cost} onValueChange={setCost} placeholder="Harga dari server" />
+          </label>
+        )}
+      </div>
+      {showCost && digitsToRupiah(price) !== null && digitsToRupiah(cost) !== null && (
+        <p className="profit-note">
+          Untung: <strong>{rpSigned(profit)}</strong>
+        </p>
+      )}
+      <ErrorText error={error} />
+      <button type="button" className="button button-primary button-block" onClick={add}>
+        Masukkan ke keranjang
+      </button>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bagian Service
+// ---------------------------------------------------------------------------
+
+function ServiceCashier({ ctx, orders }: { readonly ctx: PageContext; readonly orders: readonly ServiceOrder[] }) {
+  const [creating, setCreating] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const [paying, setPaying] = useState<ServiceOrder | null>(null);
+  const [paid, setPaid] = useState<ServiceOrder | null>(null);
+  const [search, setSearch] = useState("");
+
+  const query = search.trim().toLowerCase();
+  const match = (order: ServiceOrder) =>
+    query === "" ||
+    order.customerName.toLowerCase().includes(query) ||
+    order.device.toLowerCase().includes(query) ||
+    order.number.toLowerCase().includes(query);
+  const ready = orders.filter((order) => order.status !== "proses" && match(order));
+  const working = orders.filter((order) => order.status === "proses" && match(order));
+  const detail = orders.find((order) => order.id === detailId) ?? null;
+
+  return (
+    <>
+      <div className="toolbar">
+        <input
+          className="search-input"
+          type="search"
+          placeholder="Cari nama, HP, atau nomor service…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        <button type="button" className="button button-primary" onClick={() => setCreating(true)}>
+          + Terima service
+        </button>
+      </div>
+
+      <section>
+        <h2 className="section-title">Siap diambil & dibayar ({ready.length})</h2>
+        {ready.length === 0 ? (
+          <EmptyState>Belum ada HP service yang siap diambil.</EmptyState>
+        ) : (
+          <ul className="card-list">
+            {ready.map((order) => {
+              const balance = order.balanceDueRupiah ?? 0n;
+              return (
+                <li key={order.id}>
+                  <div className="list-card pay-card">
+                    <button type="button" className="list-card-main plain" onClick={() => setDetailId(order.id)}>
+                      <strong>
+                        {order.customerName} · {order.device}
+                      </strong>
+                      <span className="muted">{order.complaint}</span>
+                      <span className="badges">
+                        <span className={STATUS_BADGE[order.status]}>{SERVICE_STATUS_LABELS[order.status]}</span>
+                        <span className="badge badge-muted">{order.number}</span>
+                      </span>
+                    </button>
+                    <div className="pay-card-side">
+                      <span className="muted small">{balance >= 0n ? "Sisa bayar" : "Kembalikan DP"}</span>
+                      <strong>{rp(balance >= 0n ? balance : -balance)}</strong>
+                      <button type="button" className="button button-primary" onClick={() => setPaying(order)}>
+                        Bayar
+                      </button>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="section-title">Sedang dikerjakan ({working.length})</h2>
+        {working.length === 0 ? (
+          <EmptyState>Tidak ada service yang sedang dikerjakan.</EmptyState>
+        ) : (
+          <ul className="card-list">
+            {working.map((order) => (
+              <li key={order.id}>
+                <button type="button" className="list-card" onClick={() => setDetailId(order.id)}>
+                  <span className="list-card-main">
+                    <strong>
+                      {order.customerName} · {order.device}
+                    </strong>
+                    <span className="muted">{order.complaint}</span>
+                    <span className="badges">
+                      <span className="badge badge-muted">{order.number}</span>
+                      <span className="badge badge-muted">masuk {ageLabel(order.receivedAtMs)}</span>
+                    </span>
+                  </span>
+                  <span className="list-card-side">
+                    {order.estimateRupiah !== null && <span className="muted">± {rp(order.estimateRupiah)}</span>}
+                    {order.depositRupiah > 0n && <span className="muted">DP {rp(order.depositRupiah)}</span>}
+                    <span className="link-like">Selesaikan →</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {creating && (
+        <NewServiceSheet
           ctx={ctx}
-          cart={cart}
-          setCart={setCart}
-          thumbs={{ phone: stock.data?.phoneThumbs, accessory: stock.data?.accessoryThumbs }}
-          onClose={() => setCheckout(false)}
-          onSaved={(sale) => {
-            setCheckout(false);
-            setCart([]);
-            setSearch("");
-            setReceipt(sale);
+          onClose={() => setCreating(false)}
+          onCreated={(order) => {
+            setCreating(false);
             ctx.changed();
+            setDetailId(order.id);
           }}
         />
       )}
-      {receipt !== null && <ReceiptSheet ctx={ctx} sale={receipt} onClose={() => setReceipt(null)} />}
-    </div>
+      {detail !== null && paying === null && (
+        <ServiceDetailSheet ctx={ctx} order={detail} onClose={() => setDetailId(null)} onPay={() => setPaying(detail)} />
+      )}
+      {paying !== null && (
+        <ServicePaySheet
+          ctx={ctx}
+          order={paying}
+          onClose={() => setPaying(null)}
+          onPaid={(order) => {
+            setPaying(null);
+            setDetailId(null);
+            setPaid(order);
+          }}
+        />
+      )}
+      {paid !== null && <ServiceDoneSheet ctx={ctx} order={paid} onClose={() => setPaid(null)} />}
+    </>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Bayar
+// ---------------------------------------------------------------------------
+
+function lineQuantity(line: CartLine): bigint {
+  return line.kind === "hp" ? 1n : BigInt(line.quantity);
+}
+
+function lineCost(line: CartLine): bigint {
+  switch (line.kind) {
+    case "hp":
+      return line.phone.costRupiah;
+    case "aksesoris":
+      return line.accessory.costRupiah;
+    case "digital":
+      return digitsToRupiah(line.cost) ?? 0n;
+  }
 }
 
 function CheckoutSheet({
@@ -269,12 +769,14 @@ function CheckoutSheet({
   readonly onSaved: (sale: SaleRecord) => void;
 }) {
   const showCost = can(ctx.user, "viewCostAndProfit");
+  const hasPhone = cart.some((line) => line.kind === "hp");
   const [tradeIn, setTradeIn] = useState<TradeInForm | null>(null);
   const [showCustomer, setShowCustomer] = useState(false);
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [payment, setPayment] = useState<PaymentMethod>("tunai");
   const action = useAction();
+  const activeTradeIn = hasPhone ? tradeIn : null;
 
   const totals = useMemo(() => {
     let items = 0n;
@@ -283,13 +785,13 @@ function CheckoutSheet({
     for (const line of cart) {
       const price = digitsToRupiah(line.price);
       if (price === null) complete = false;
-      const quantity = line.kind === "hp" ? 1n : BigInt(line.quantity);
+      const quantity = lineQuantity(line);
       items += (price ?? 0n) * quantity;
-      cost += (line.kind === "hp" ? line.phone.costRupiah : line.accessory.costRupiah) * quantity;
+      cost += lineCost(line) * quantity;
     }
-    const credit = tradeIn === null ? 0n : digitsToRupiah(tradeIn.credit) ?? 0n;
+    const credit = activeTradeIn === null ? 0n : digitsToRupiah(activeTradeIn.credit) ?? 0n;
     return { items, credit, due: items - credit, profit: items - cost, complete };
-  }, [cart, tradeIn]);
+  }, [cart, activeTradeIn]);
 
   function updateLine(key: string, patch: Partial<{ price: string; quantity: number }>) {
     setCart((current) =>
@@ -302,29 +804,38 @@ function CheckoutSheet({
   async function save() {
     await action.run(async () => {
       if (!totals.complete) throw new Error("Isi harga jual semua barang dulu.");
-      const lines: SaleLineInput[] = cart.map((line) =>
-        line.kind === "hp"
-          ? { kind: "hp", phoneUnitId: line.phone.id, priceRupiah: digitsToRupiah(line.price) ?? 0n }
-          : {
-              kind: "aksesoris",
-              accessoryId: line.accessory.id,
+      const lines: SaleLineInput[] = cart.map((line): SaleLineInput => {
+        const price = digitsToRupiah(line.price) ?? 0n;
+        switch (line.kind) {
+          case "hp":
+            return { kind: "hp", phoneUnitId: line.phone.id, priceRupiah: price };
+          case "aksesoris":
+            return { kind: "aksesoris", accessoryId: line.accessory.id, quantity: BigInt(line.quantity), unitPriceRupiah: price };
+          case "digital":
+            return {
+              kind: "digital",
+              digitalProductId: line.product?.id ?? null,
+              name: line.product === null ? line.name : null,
+              target: line.target,
               quantity: BigInt(line.quantity),
-              unitPriceRupiah: digitsToRupiah(line.price) ?? 0n,
-            },
-      );
+              unitPriceRupiah: price,
+              unitCostRupiah: digitsToRupiah(line.cost),
+            };
+        }
+      });
       const sale = await ctx.repo.recordSale({
         lines,
         tradeIn:
-          tradeIn === null
+          activeTradeIn === null
             ? null
             : {
-                brand: tradeIn.brand,
-                model: tradeIn.model,
-                variant: tradeIn.variant,
-                imei1: tradeIn.imei1,
-                condition: tradeIn.condition,
-                completeness: tradeIn.completeness,
-                creditRupiah: digitsToRupiah(tradeIn.credit) ?? 0n,
+                brand: activeTradeIn.brand,
+                model: activeTradeIn.model,
+                variant: activeTradeIn.variant,
+                imei1: activeTradeIn.imei1,
+                condition: activeTradeIn.condition,
+                completeness: activeTradeIn.completeness,
+                creditRupiah: digitsToRupiah(activeTradeIn.credit) ?? 0n,
               },
         paymentMethod: payment,
         customerName,
@@ -345,62 +856,82 @@ function CheckoutSheet({
   return (
     <Sheet title="Bayar" onClose={onClose} wide>
       <ul className="checkout-list">
-        {cart.map((line) => (
-          <li key={line.key} className="checkout-line">
-            <ProductThumb
-              src={line.kind === "hp" ? thumbs.phone?.get(line.phone.id) : thumbs.accessory?.get(line.accessory.id)}
-              kind={line.kind}
-              size="sm"
-            />
-            <div className="checkout-name">
-              <strong>{line.kind === "hp" ? line.phone.displayName : line.accessory.name}</strong>
-              <span className="muted small">
-                {line.kind === "hp" ? `IMEI ${line.phone.imei1}` : `${rp(line.accessory.priceRupiah)} / pcs`}
-              </span>
-            </div>
-            {line.kind === "aksesoris" && (
-              <div className="stepper">
-                <button type="button" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Kurangi">
-                  −
-                </button>
-                <span>{line.quantity}</span>
-                <button
-                  type="button"
-                  onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })}
-                  aria-label="Tambah"
-                  disabled={BigInt(line.quantity) >= line.accessory.stockQuantity}
-                >
-                  +
-                </button>
+        {cart.map((line) => {
+          const stepperMax =
+            line.kind === "aksesoris"
+              ? line.accessory.stockQuantity
+              : line.kind === "digital" && line.product?.tracksStock
+                ? line.product.stockQuantity
+                : null;
+          return (
+            <li key={line.key} className="checkout-line">
+              {line.kind === "digital" ? (
+                <ProductThumb src={undefined} kind="digital" icon={DIGITAL_CATEGORY_ICONS[line.category]} size="sm" />
+              ) : (
+                <ProductThumb
+                  src={line.kind === "hp" ? thumbs.phone?.get(line.phone.id) : thumbs.accessory?.get(line.accessory.id)}
+                  kind={line.kind}
+                  size="sm"
+                />
+              )}
+              <div className="checkout-name">
+                <strong>{line.kind === "hp" ? line.phone.displayName : line.kind === "aksesoris" ? line.accessory.name : line.name}</strong>
+                <span className="muted small">
+                  {line.kind === "hp"
+                    ? `IMEI ${line.phone.imei1}`
+                    : line.kind === "aksesoris"
+                      ? `${rp(line.accessory.priceRupiah)} / pcs`
+                      : line.target !== ""
+                        ? `ke ${line.target}`
+                        : DIGITAL_CATEGORY_LABELS[line.category]}
+                </span>
               </div>
-            )}
-            <CurrencyInput
-              className="price-input"
-              aria-label="Harga jual"
-              placeholder="Harga"
-              value={line.price}
-              onValueChange={(price) => updateLine(line.key, { price })}
-            />
-            <button
-              type="button"
-              className="icon-button"
-              aria-label="Hapus"
-              onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))}
-            >
-              ✕
-            </button>
-          </li>
-        ))}
+              {stepperMax !== null && line.kind !== "hp" && (
+                <div className="stepper">
+                  <button type="button" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Kurangi">
+                    −
+                  </button>
+                  <span>{line.quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })}
+                    aria-label="Tambah"
+                    disabled={BigInt(line.quantity) >= stepperMax}
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+              <CurrencyInput
+                className="price-input"
+                aria-label="Harga jual"
+                placeholder="Harga"
+                value={line.price}
+                onValueChange={(price) => updateLine(line.key, { price })}
+              />
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="Hapus"
+                onClick={() => setCart((current) => current.filter((item) => item.key !== line.key))}
+              >
+                ✕
+              </button>
+            </li>
+          );
+        })}
       </ul>
 
       <div className="option-toggles">
-        <button
-          type="button"
-          className={tradeIn !== null ? "toggle-pill on" : "toggle-pill"}
-          onClick={() => setTradeIn(tradeIn === null ? EMPTY_TRADE_IN : null)}
-        >
-          {tradeIn !== null ? "✓ " : "+ "}Tukar tambah
-        </button>
+        {hasPhone && (
+          <button
+            type="button"
+            className={tradeIn !== null ? "toggle-pill on" : "toggle-pill"}
+            onClick={() => setTradeIn(tradeIn === null ? EMPTY_TRADE_IN : null)}
+          >
+            {tradeIn !== null ? "✓ " : "+ "}Tukar tambah
+          </button>
+        )}
         <button
           type="button"
           className={showCustomer ? "toggle-pill on" : "toggle-pill"}
@@ -410,7 +941,7 @@ function CheckoutSheet({
         </button>
       </div>
 
-      {tradeIn !== null && (
+      {activeTradeIn !== null && tradeIn !== null && (
         <fieldset className="trade-in">
           <legend>HP lama pelanggan</legend>
           <div className="form-grid two">
@@ -471,7 +1002,7 @@ function CheckoutSheet({
       </div>
 
       <dl className="totals">
-        {tradeIn !== null && (
+        {activeTradeIn !== null && (
           <>
             <div>
               <dt>Total barang</dt>
