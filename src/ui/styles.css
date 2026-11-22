@@ -1318,3 +1318,25 @@ button.list-card:not(:disabled):hover,
     padding-bottom: 72px;
   }
 }
+
+/* Layar sempit (HP, tablet tegak): 6 menu muat tanpa digeser, ikon di atas teks. */
+@media (max-width: 760px) {
+  .tab-bar {
+    width: 100%;
+    gap: 0;
+  }
+
+  .tab {
+    min-height: 58px;
+    flex: 1 1 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    padding: 4px 2px;
+    font-size: 12px;
+  }
+
+  .tab span {
+    font-size: 18px;
+  }
+}

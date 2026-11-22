@@ -117,6 +117,7 @@ function UsersSection({ ctx }: { readonly ctx: PageContext }) {
   const [adding, setAdding] = useState(false);
   const [staffName, setStaffName] = useState("");
   const [nameConfirmed, setNameConfirmed] = useState(false);
+  const [renaming, setRenaming] = useState<{ readonly id: string; readonly name: string } | null>(null);
   const action = useAction();
 
   function closeAdd() {
@@ -142,21 +143,30 @@ function UsersSection({ ctx }: { readonly ctx: PageContext }) {
                 <strong>{user.name}</strong>
                 <span className="muted">{roleLabel(user.role)}</span>
               </span>
-              {user.role === "staff" && (
+              <span className="button-row">
                 <button
                   type="button"
-                  className="text-button danger"
-                  disabled={action.busy}
-                  onClick={() =>
-                    void action.run(async () => {
-                      await ctx.auth.archiveStaff(ctx.user, user.id);
-                      ctx.changed();
-                    })
-                  }
+                  className="text-button"
+                  onClick={() => setRenaming({ id: user.id, name: user.name })}
                 >
-                  Nonaktifkan
+                  Ubah nama
                 </button>
-              )}
+                {user.role === "staff" && (
+                  <button
+                    type="button"
+                    className="text-button danger"
+                    disabled={action.busy}
+                    onClick={() =>
+                      void action.run(async () => {
+                        await ctx.auth.archiveStaff(ctx.user, user.id);
+                        ctx.changed();
+                      })
+                    }
+                  >
+                    Nonaktifkan
+                  </button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
@@ -164,6 +174,36 @@ function UsersSection({ ctx }: { readonly ctx: PageContext }) {
       <button type="button" className="button button-secondary" onClick={() => setAdding(true)}>
         + Tambah karyawan
       </button>
+
+      {renaming !== null && (
+        <Sheet title="Ubah nama pengguna" onClose={() => setRenaming(null)}>
+          <form
+            className="form-grid"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void action.run(async () => {
+                await ctx.auth.renameUser(ctx.user, renaming.id, renaming.name);
+                setRenaming(null);
+                ctx.changed();
+              });
+            }}
+          >
+            <label>
+              Nama
+              <input
+                value={renaming.name}
+                onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                maxLength={40}
+                autoFocus
+              />
+            </label>
+            <ErrorText error={action.error} />
+            <button className="button button-primary" disabled={action.busy}>
+              Simpan nama
+            </button>
+          </form>
+        </Sheet>
+      )}
 
       {adding && (
         <Sheet title={nameConfirmed ? `PIN untuk ${staffName.trim()}` : "Tambah karyawan"} onClose={closeAdd}>
